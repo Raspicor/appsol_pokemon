@@ -221,6 +221,42 @@ macOS 창에는 애초에 타이틀바 아이콘이 없으므로(문서 창의 �
 이 호출이 창에 해주는 일은 없습니다. 그래서 원본은 그대로 부르고 직후에 앱
 아이콘만 되돌립니다.
 
+### 다크 모드에서 깨지던 두 가지
+
+macOS의 시스템 색은 다크 모드를 따라갑니다. 게임은 Windows의 밝은 기본값을
+전제로 색을 고르므로 다크 모드에서 두 군데가 깨집니다. 둘 다
+`install_contrast_fix()`가 메웁니다.
+
+**(a) 위젯마다 검은 테두리.** aqua 위젯은 네이티브 베젤 바깥 영역을
+`-highlightbackground`로 칠하는데, 기본값이 `systemWindowBackgroundColor` —
+다크 모드에서 거의 검정입니다. 그래서 크림색(`#fff6e0`) 전투 창 위의 버튼마다
+검은 사각형이 둘러집니다. 실측하면 위젯 경계에 `#1c1c1c`가 4px, 그 안쪽이 흰
+베젤입니다. 옵션 조합을 그려서 비교했을 때 `bg`만 준 버튼은 검은 테가 남고
+`highlightbackground`를 준 버튼만 그 테가 해당 색으로 바뀌었습니다. 부모의
+배경색을 넣어주면 배경에 묻습니다.
+
+**(b) 밝은 배경 위의 흰 글자.** `Label`의 기본 `fg`는 `systemTextColor`라
+다크 모드에서 흰색입니다. 게임이 `bg`만 주고 `fg`를 안 준 라벨은 크림색 위의
+흰 글자가 되어 사실상 안 보입니다. 실측: `야생 ？？？ Lv.2`의 글자가
+(255,252,245), 배경이 (255,244,221). 바로 아래 `내 파이리`는 `fg`를 명시해서
+멀쩡합니다.
+
+`Button`에는 (b)를 적용하지 않습니다. aqua가 Button의 기본 글자색을 `Black`
+으로 고정해 두고 베젤도 항상 밝아서, 어두운 창에 놓였다고 흰 글자를 주면 흰
+베젤 위의 흰 글자가 됩니다. `Menu`에는 `-highlightbackground` 자체가 없어서
+주면 위젯 생성이 실패합니다.
+
+### 펫이 가만히 있는 이유
+
+전투 창이 열려 있으면 펫은 움직이지 않습니다. `_update_walk`(pet.py:9279)의
+첫 줄이 `if self.battle_open: return` 입니다. 반면 `Companion._step_free_roam`
+에는 그 검사가 없어서 **동료만 계속 돌아다닙니다.** 그래서 펫이 멈춘 것처럼
+보입니다. 게임 자체 동작이고 macOS 포팅과 무관합니다.
+
+`open_battle`이 플래그를 세우면서 `WM_DELETE_WINDOW` → `_close_battle`을
+등록하고 거기서 플래그가 풀립니다. `install_titlebar_restore()`가 붙여주는
+네이티브 닫기 버튼도 그 경로를 타므로, 창을 닫으면 펫이 다시 움직입니다.
+
 ### 배포와 버전
 
 저장소가 공개라 **GitHub Releases**가 배포처입니다. 파일당 2 GB까지라 115 MB
@@ -318,7 +354,7 @@ Apple Developer 인증서가 없으면 ad-hoc 서명만 붙으므로, 다른 맥
 cd ~/projects/pikapet && .venv/bin/python -m unittest discover -s run -v
 ```
 
-113개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
+131개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
 - `flash_taskbar`의 세 번째 인자는 `timeout`이 아니라 `interval_ms`였고,
   `acquire_single_instance_lock`엔 기본 mutex 이름 `PikaPetSingleInstanceMutex_do_bro2`가
   있었습니다 (원본 `winlayer.pyc`와 시그니처를 대조하는 테스트가 잡아냄)
@@ -381,7 +417,7 @@ run/                 macOS 실행 환경
   maclayer.py          winlayer의 macOS 구현 (Quartz/AppKit)
   test_maclayer.py     계약 테스트 34개
   test_overlay.py      오버레이 추적 로직 테스트 17개
-  test_macui.py        글리프 보정 / 색 버튼 / 앱 아이콘 테스트 27개
+  test_macui.py        글리프 보정 / 색 버튼 / 대비 보정 테스트 45개
   macupdate.py         새 버전 확인 (GitHub Releases)
   test_macupdate.py    업데이트 확인 테스트 28개
   mactray.py           트레이 전용 기능을 되살린 메뉴 바 항목

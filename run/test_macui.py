@@ -111,6 +111,12 @@ class Shading(unittest.TestCase):
         self.assertFalse(L._is_light("#1a1a1a"))
         self.assertTrue(L._is_light("systemTextColor"))   # 모르면 검정 글자
 
+    def test_three_digit_hex(self):
+        # 게임은 '#eee' 같은 짧은 표기도 쓴다. 펼쳐서 보지 않으면 어두운 '#111'
+        # 까지 밝다고 판정해서 검은 배경에 검은 글자가 된다.
+        self.assertTrue(L._is_light("#eee"))
+        self.assertFalse(L._is_light("#111"))
+
 
 class ButtonRouting(unittest.TestCase):
     """색을 준 버튼만 바꿔치기해야 한다. 나머지는 네이티브 그대로."""
@@ -218,6 +224,122 @@ class AppIconLookup(unittest.TestCase):
         found = [p for p in L.ICON_CANDIDATES if os.path.exists(p)]
         self.assertTrue(found, f"아이콘 후보가 하나도 없다: {L.ICON_CANDIDATES}")
         self.assertTrue(found[0].endswith("icon.png"))
+
+class FakeParent:
+    """부모 위젯 자리. cget('bg') 만 답한다."""
+
+    def __init__(self, bg):
+        self.bg = bg
+
+    def cget(self, key):
+        if key in ("bg", "background"):
+            if self.bg is None:
+                raise RuntimeError("배경 없음")
+            return self.bg
+        raise KeyError(key)
+
+
+class ContrastFix(unittest.TestCase):
+    """다크 모드에서 생기는 검은 테두리와 안 보이는 글자를 메운다."""
+
+    def setUp(self):
+        self.made = []
+        original = tk.BaseWidget.__init__
+
+        def recorder(this, master, widgetName, cnf={}, kw={}, extra=()):
+            self.made.append((widgetName, dict(kw if kw else cnf)))
+
+        tk.BaseWidget.__init__ = recorder
+        self.addCleanup(setattr, tk.BaseWidget, "__init__", original)
+        L.install_contrast_fix()
+
+    def make(self, widget, parent_bg="#fff6e0", **kw):
+        tk.BaseWidget.__init__(object(), FakeParent(parent_bg), widget, {}, kw)
+        return self.made[-1][1]
+
+    # -- 검은 테두리 -------------------------------------------------------
+
+    def test_a_button_gets_the_parents_colour_for_its_ring(self):
+        # 이게 전투 창 버튼마다 검은 사각형이 둘러지던 것이다.
+        self.assertEqual(self.make("button", text="⚔ 공격")["highlightbackground"],
+                         "#fff6e0")
+
+    def test_labels_and_frames_get_it_too(self):
+        for widget in ("label", "frame", "canvas", "entry", "scrollbar"):
+            self.assertEqual(self.make(widget)["highlightbackground"], "#fff6e0",
+                             widget)
+
+    def test_a_system_coloured_parent_is_left_alone(self):
+        # 부모가 시스템 색이면 테두리도 같은 시스템 색이라 이미 맞는다.
+        self.assertNotIn("highlightbackground",
+                         self.make("button", parent_bg="systemWindowBackgroundColor"))
+
+    def test_a_parent_without_a_background_is_left_alone(self):
+        self.assertNotIn("highlightbackground", self.make("button", parent_bg=None))
+
+    def test_the_games_own_choice_wins(self):
+        got = self.make("button", highlightbackground="#123456")
+        self.assertEqual(got["highlightbackground"], "#123456")
+
+    def test_an_explicit_thickness_is_respected(self):
+        # 게임이 테두리를 직접 다루고 있으면 끼어들지 않는다.
+        self.assertNotIn("highlightbackground", self.make("button", highlightthickness=0))
+
+    def test_menus_are_never_touched(self):
+        # Menu에는 -highlightbackground 가 없어서 주면 생성이 통째로 실패한다.
+        self.assertNotIn("highlightbackground", self.make("menu"))
+
+    def test_toplevels_are_never_touched(self):
+        self.assertNotIn("highlightbackground", self.make("toplevel"))
+
+    # -- 안 보이는 글자 ----------------------------------------------------
+
+    def test_a_label_on_a_light_background_gets_dark_text(self):
+        # '야생 ？？？ Lv.2' 가 크림색 위에 흰 글자로 찍히던 것이다.
+        got = self.make("label", text="야생 ？？？ Lv.2", bg="#fff6e0")
+        self.assertEqual(got["fg"], "#111111")
+
+    def test_a_label_on_a_dark_background_gets_light_text(self):
+        self.assertEqual(self.make("label", text="상태", bg="#1a1a1a")["fg"], "#f0f0f0")
+
+    def test_an_explicit_foreground_wins(self):
+        got = self.make("label", text="내 파이리", bg="#fff6e0", fg="#1a4a8a")
+        self.assertEqual(got["fg"], "#1a4a8a")
+
+    def test_a_label_without_its_own_background_is_left_alone(self):
+        self.assertNotIn("fg", self.make("label", text="무엇"))
+
+    def test_buttons_never_get_a_derived_foreground(self):
+        # aqua 버튼의 베젤은 부모 색과 무관하게 항상 밝다. 어두운 창에 놓였다고
+        # 흰 글자를 주면 흰 베젤에 흰 글자가 된다.
+        self.assertNotIn("fg", self.make("button", text="확인", bg="#1a1a1a",
+                                         parent_bg="#1a1a1a"))
+
+    # -- 안전 --------------------------------------------------------------
+
+    def test_the_cnf_dict_form_is_handled(self):
+        tk.BaseWidget.__init__(object(), FakeParent("#fff6e0"), "button",
+                               {"text": "확인"}, {})
+        self.assertEqual(self.made[-1][1]["highlightbackground"], "#fff6e0")
+
+    def test_a_broken_parent_does_not_stop_the_widget(self):
+        class Exploding:
+            def cget(self, key):
+                raise RuntimeError("안 됨")
+
+        tk.BaseWidget.__init__(object(), Exploding(), "button", {}, {"text": "확인"})
+        self.assertEqual(self.made[-1][0], "button")
+
+
+class ColourHelpers(unittest.TestCase):
+    def test_hex_colours_are_recognised(self):
+        self.assertEqual(L._explicit_color("#fff6e0"), "#fff6e0")
+        self.assertEqual(L._explicit_color("#eee"), "#eee")
+
+    def test_system_names_are_not(self):
+        for name in ("systemWindowBackgroundColor", "systemTextColor", "white", "", None):
+            self.assertIsNone(L._explicit_color(name), name)
+
 
 if __name__ == "__main__":
     unittest.main()
