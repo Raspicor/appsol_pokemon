@@ -4,7 +4,7 @@
 pet.pyc is Windows-built bytecode, but it is not Windows-specific: it makes no
 Win32 calls of its own and routes everything platform-dependent through the
 `winlayer` module. So rather than rewrite the game, this launcher loads the
-original bytecode and patches the four places where Windows assumptions leak
+original bytecode and patches the five places where Windows assumptions leak
 through:
 
   1. `winlayer`        -> maclayer, the Quartz/AppKit implementation next door.
@@ -16,6 +16,18 @@ through:
                           which only works on the main thread; PikaPet starts it
                           on a daemon thread, which traps the process. Replaced
                           with a stand-in that keeps notifications working.
+  5. the magenta plate every sprite frame is pasted onto -> a transparent one.
+                          The colour is a literal in the render path, so patch 3
+                          cannot reach it.
+
+Known limitation: Tk 9.0 on aqua accepts `-transparent` and the
+`systemTransparent` colour but still paints the window's backdrop opaque, so the
+pet sits on a solid rectangle rather than directly on the desktop. Patches 2, 3
+and 5 make that rectangle black instead of magenta and keep the sprite's own
+alpha intact, which is what a Tk build with working transparency would need.
+Verified on Tk 9.0.4 / macOS 26: Label and Canvas, with and without
+overrideredirect, `-alpha` below 1, and the `MacWindowStyle` plain/noActivates
+route all render the backdrop opaque.
 
 Nothing is written back to pet.pyc, so the patches cannot drift from the game
 and none of this depends on the decompiled source being perfect.
@@ -103,6 +115,42 @@ def transparency_is_available(master):
                 pass
 
 
+def install_sprite_alpha_patch():
+    """Stop the sprite render path from flattening frames onto magenta.
+
+    `Companion.step` and `PetApp.redraw` both build their frame the Windows way
+    (pet.py:4264 and pet.py:7252):
+
+        resized.putalpha(alpha)                       # thresholded to 0 or 255
+        bg = Image.new('RGB', (w, h), (255, 0, 255))
+        bg.paste(resized, (0, 0), resized)
+        ImageTk.PhotoImage(bg)
+
+    On Windows the window's `-transparentcolor` key erases those magenta pixels
+    when the window is composited, so the plate is never seen. macOS has no
+    colour key -- `-transparent` only clears widget backgrounds -- so the plate
+    survives and the pet sits in a magenta box.
+
+    Patch 3 cannot fix this: the colour here is a literal `(255, 0, 255)` tuple
+    in the bytecode, not the `MAGIC` global. Handing back a transparent RGBA
+    plate instead leaves `paste` (which uses the sprite as its own mask)
+    working unchanged, and ImageTk then receives a real alpha channel.
+
+    The two call sites are the only `(255, 0, 255)` constants in pet.pyc, so
+    matching on mode and colour cannot catch anything else.
+    """
+    from PIL import Image
+
+    original = Image.new
+
+    def new(mode, size, color=0, *args, **kwargs):
+        if mode == "RGB" and color == (255, 0, 255):
+            return original("RGBA", size, (0, 0, 0, 0), *args, **kwargs)
+        return original(mode, size, color, *args, **kwargs)
+
+    Image.new = new
+
+
 # --------------------------------------------------------------------------
 # 3. the tray icon
 # --------------------------------------------------------------------------
@@ -129,6 +177,11 @@ class MacTray:
     def notify(self, message, title="PikaPet"):
         """Post to Notification Center, without blocking the Tk event loop."""
         try:
+            if _deliver_notification(message, title):
+                return
+        except Exception:
+            pass
+        try:
             script = 'display notification {} with title {}'.format(
                 _applescript_string(message), _applescript_string(title))
             subprocess.Popen(["osascript", "-e", script],
@@ -141,6 +194,31 @@ class MacTray:
 
     def stop(self):
         """No-op: there is no background tray thread to shut down."""
+
+
+def _deliver_notification(message, title):
+    """Post a banner that belongs to this process. True if it went out.
+
+    `osascript -e 'display notification'` is the obvious way to do this, but the
+    banner it posts is owned by Script Editor, so clicking one -- a wild-Pokemon
+    alert, say -- brings up Script Editor instead of the pet. Going through the
+    framework directly keeps the banner attributed to the running interpreter,
+    so a click activates us and nothing else.
+
+    NSUserNotificationCenter has been deprecated since macOS 11 but still
+    delivers; the osascript path in `MacTray.notify` stays as the fallback for
+    the release where it finally stops.
+    """
+    from Foundation import NSUserNotification, NSUserNotificationCenter
+
+    center = NSUserNotificationCenter.defaultUserNotificationCenter()
+    if center is None:
+        return False
+    note = NSUserNotification.alloc().init()
+    note.setTitle_(str(title))
+    note.setInformativeText_(str(message))
+    center.deliverNotification_(note)
+    return True
 
 
 def _applescript_string(text):
@@ -163,7 +241,10 @@ def install_window_patch(pet):
         transparent = transparency_is_available(root)
         if transparent:
             pet.MAGIC = "systemTransparent"
-        print(f"  transparency: {'on' if transparent else 'off (opaque pet window)'}",
+            install_sprite_alpha_patch()
+        print("  transparency: "
+              + ("attribute accepted (Tk 9 still draws an opaque backdrop)"
+                 if transparent else "unavailable (opaque pet window)"),
               flush=True)
         return original(root)
 

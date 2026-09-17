@@ -1,0 +1,5 @@
+run/pet_state.json
+run/pet_state.json.bak
+
+# build output; the game's own .pyc files (pet/winlayer/spriteanim) stay tracked
+__pycache__/

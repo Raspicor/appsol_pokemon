@@ -1,0 +1,22 @@
+# PikaPet macOS runtime. Install into a Python 3.14 venv:
+#   python3.14 -m venv /tmp/pikaenv && /tmp/pikaenv/bin/pip install -r requirements.txt
+#
+# These are the versions the port was verified on. PikaPet.exe bundled slightly
+# older ones (numpy 2.5.0, websockets 16.0) and runs fine on both.
+# pyobjc arrives via pystray and is also what run/maclayer.py uses directly.
+pillow==12.3.0
+numpy==2.5.3
+pystray==0.19.5
+websockets==17.1
+Werkzeug==3.1.8
+MarkupSafe==3.0.3
+watchdog==6.0.0
+charset-normalizer==3.5.1
+colorama==0.4.6
+packaging==26.3
+six==1.17.0
+threadpoolctl==3.7.0
+typing_extensions==4.16.0
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-Quartz==12.2.2
