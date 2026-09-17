@@ -413,9 +413,17 @@ def _shade(color, factor):
 
 
 def _is_light(color):
-    """#rrggbb 가 밝은 색인가. 판단할 수 없으면 밝다고 본다 (검정 글자가 기본)."""
+    """#rgb / #rrggbb 가 밝은 색인가. 판단할 수 없으면 밝다고 본다.
+
+    판단이 안 될 때 밝다고 보는 이유: 그러면 검은 글자가 나오고, 게임이 쓰는
+    배경은 대부분 밝다. 반대로 틀리면 흰 배경에 흰 글자가 된다.
+    """
     try:
-        if not (isinstance(color, str) and color.startswith("#") and len(color) == 7):
+        if not (isinstance(color, str) and color.startswith("#")):
+            return True
+        if len(color) == 4:                       # #eee -> #eeeeee
+            color = "#" + "".join(ch * 2 for ch in color[1:])
+        if len(color) != 7:
             return True
         r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
         return (0.299 * r + 0.587 * g + 0.114 * b) > 140
@@ -632,6 +640,88 @@ def install_app_icon_guard():
 
     tk.Wm.wm_iconphoto = wm_iconphoto
     tk.Wm.iconphoto = wm_iconphoto
+
+# --------------------------------------------------------------------------
+# 2-f. 검은 테두리와 안 보이는 글자
+# --------------------------------------------------------------------------
+# macOS의 시스템 색은 다크 모드를 따라간다. 게임은 Windows의 밝은 기본값을
+# 전제로 색을 고르므로, 다크 모드에서 두 가지가 깨진다.
+#
+# **(1) 위젯마다 검은 테두리.** aqua 위젯은 네이티브 베젤 바깥 영역을
+# `-highlightbackground` 로 칠하는데, 기본값이 systemWindowBackgroundColor,
+# 즉 다크 모드에서 거의 검정이다. 그래서 크림색(#fff6e0) 전투 창 위의 버튼마다
+# 검은 사각형이 둘러진다. 실측: 버튼 경계에 #1c1c1c 가 4px, 그 안쪽이 흰 베젤.
+# 옵션 조합을 그려서 확인했을 때, `bg` 만 준 버튼은 검은 테가 남고
+# `highlightbackground` 를 준 버튼만 그 테가 해당 색으로 바뀌었다. 그러니
+# **그 옵션이 그 띠를 칠한다**. 부모의 배경색을 넣어주면 띠가 배경에 묻는다.
+#
+# **(2) 밝은 배경 위의 흰 글자.** Label의 기본 `fg` 는 systemTextColor 라서
+# 다크 모드에서 흰색이 된다. 게임이 bg만 주고 fg를 안 준 라벨은 크림색 위의
+# 흰 글자가 되어 사실상 안 보인다. 실측: '야생 ？？？ Lv.2' 글자 (255,252,245),
+# 배경 (255,244,221). 바로 아래 '내 파이리'는 fg를 명시해서 멀쩡하다.
+# Button은 해당 없다 -- aqua가 Button의 기본 fg를 'Black' 으로 고정해 두고
+# 베젤도 항상 밝기 때문에, 여기서 건드리면 오히려 흰 베젤에 흰 글자가 된다.
+
+# 이 띠를 칠할 수 있는 위젯들. Menu에는 -highlightbackground 가 없어서 넣으면
+# Tcl이 생성 자체를 거부한다.
+RING_WIDGETS = frozenset((
+    "button", "label", "frame", "canvas", "checkbutton", "radiobutton",
+    "entry", "listbox", "text", "scale", "spinbox", "message",
+    "labelframe", "scrollbar", "menubutton",
+))
+
+# 자기 배경 위에 자기 글자를 그리는 위젯들. 여기만 fg를 보정한다.
+TEXT_WIDGETS = frozenset(("label", "message", "checkbutton", "radiobutton"))
+
+
+def _explicit_color(value):
+    """#rrggbb 형태면 그 값, 아니면 None.
+
+    'systemWindowBackgroundColor' 같은 이름은 aqua가 알아서 다루므로 건드리지
+    않는다. 우리가 손댈 것은 게임이 직접 고른 색뿐이다.
+    """
+    if isinstance(value, str) and value.startswith("#") and len(value) in (4, 7):
+        return value
+    return None
+
+
+def _parent_background(master):
+    """부모 위젯의 배경색. 명시적으로 칠해져 있지 않으면 None."""
+    try:
+        return _explicit_color(str(master.cget("bg")))
+    except Exception:
+        return None
+
+
+def install_contrast_fix():
+    """생성되는 모든 위젯에 테두리색과 글자색을 보정한다.
+
+    `BaseWidget.__init__` 은 모든 위젯이 지나가는 자리이고, 여기서는 위젯 종류
+    (`widgetName`)와 부모를 둘 다 알 수 있다. 게임이 명시한 옵션은 그대로 둔다 --
+    보정은 **비어 있는 자리**만 채운다.
+    """
+    original = tk.BaseWidget.__init__
+
+    def __init__(self, master, widgetName, cnf={}, kw={}, extra=()):
+        try:
+            options = kw if kw else cnf
+            if isinstance(options, dict) and widgetName != "toplevel":
+                if widgetName in RING_WIDGETS and not (
+                        "highlightbackground" in options
+                        or "highlightthickness" in options):
+                    behind = _parent_background(master)
+                    if behind:
+                        options["highlightbackground"] = behind
+                if widgetName in TEXT_WIDGETS and not (
+                        "fg" in options or "foreground" in options):
+                    own = _explicit_color(options.get("bg", options.get("background")))
+                    if own:
+                        options["fg"] = "#111111" if _is_light(own) else "#f0f0f0"
+        except Exception:
+            pass
+        return original(self, master, widgetName, cnf, kw, extra)
+
+    tk.BaseWidget.__init__ = __init__
 
 # --------------------------------------------------------------------------
 # 3. 트레이 아이콘
@@ -883,6 +973,7 @@ def main():
     install_titlebar_restore()
     install_glyph_fix()
     install_button_colors()
+    install_contrast_fix()
     install_app_icon_guard()
     remapped_buttons = install_right_click_fallback()
 
