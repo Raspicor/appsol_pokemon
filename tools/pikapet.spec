@@ -44,9 +44,9 @@ hiddenimports = [
     "xml.etree.ElementTree",
     # 우리 쪽 모듈. winlayer 자리에 들어가는 maclayer는 런처가 import하므로
     # 분석에 잡히지만, 명시해두는 편이 안전하다.
-    "maclayer", "overlay", "mactray",
+    "maclayer", "overlay", "mactray", "macnotify",
     # maclayer와 overlay가 쓰는 pyobjc
-    "Quartz", "AppKit", "Foundation", "objc",
+    "Quartz", "AppKit", "Foundation", "objc", "UserNotifications",
 ]
 
 # requirements.txt는 원본 .exe가 묶고 있던 것들을 함께 적어두지만, 게임이 실제로

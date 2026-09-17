@@ -211,8 +211,14 @@ class _Overlay:
         # 이 창이 마우스를 받아 Tk로 넘긴다. 테두리 없는 창은 key window가 되지
         # 않으므로 클릭해도 다른 앱의 포커스를 빼앗지 않는다.
         window.setIgnoresMouseEvents_(False)
-        # 펫의 topmost Tk 창(floating)보다 위, 네이티브 메뉴보다는 아래
-        window.setLevel_(getattr(AppKit, "NSStatusWindowLevel", 25))
+        # 메뉴 바보다 한 단 아래, 펫의 Tk 창보다는 위.
+        #
+        # 처음에 NSStatusWindowLevel(25)로 뒀는데 메뉴 바가 24라서, 펫이 화면
+        # 위쪽으로 걸어가면 스프라이트가 메뉴 바를 덮었다. 그 상태로 16 ms마다
+        # 창을 재배치하니 윈도서버가 메뉴 바 띠를 계속 다시 합성하면서 눈에
+        # 보이게 지직였다. 23이면 메뉴 바 아래로 지나가고(원래 Tk 창이 그랬듯이),
+        # 펫의 Tk 창(합성 레이어 19)보다는 위라서 클릭도 계속 오버레이가 받는다.
+        window.setLevel_(getattr(AppKit, "NSMainMenuWindowLevel", 24) - 1)
         window.setCollectionBehavior_(
             getattr(AppKit, "NSWindowCollectionBehaviorCanJoinAllSpaces", 1 << 0)
             | getattr(AppKit, "NSWindowCollectionBehaviorStationary", 1 << 4)

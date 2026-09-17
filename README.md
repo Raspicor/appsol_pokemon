@@ -88,6 +88,12 @@ get_desktop_icon_positions(max) -> [(x,y)]   # 바탕화면 아이콘 위 착지
 두 번 다시 꺼낼 수 없습니다. pystray를 되살리는 대신 NSStatusItem을 Tk의 메인
 스레드에서 직접 만들기 때문에 별도 run loop가 필요 없습니다.
 
+**오버레이 창 레벨은 23**입니다. 메뉴 바가 레이어 24에 합성되므로
+`NSStatusWindowLevel`(25)로 두면 펫이 위로 걸어갈 때 메뉴 바를 덮고, 16ms마다
+창을 재배치하는 탓에 그 띠가 계속 다시 합성돼 눈에 보이게 지직입니다. 23이면
+원래 Tk 창처럼 메뉴 바 뒤로 지나가고, 펫의 Tk 창(레이어 19)보다는 위라서 클릭도
+계속 오버레이가 받습니다.
+
 **투명 배경은 Tk로는 불가능합니다.** Tk 9는 toplevel을 **알파 채널이 없는** 백킹 스토어에
 렌더링합니다 — 콘텐트 뷰의 레이어가 `isOpaque = NO`이고 NSWindow가 이미 non-opaque에
 clearColor인데도 `kCGImageAlphaNoneSkipLast` CGImage를 돌려줍니다. 그래서 `-transparent`,
@@ -159,6 +165,62 @@ Tcl 호출을 하면 Python thread state가 떨어져 나가고, 다음 `after` 
 넣고, 이미 Tcl 컨텍스트인 `_Manager.tick`(16 ms)이 꺼내서 실제 Tk 이벤트를
 만듭니다.
 
+### Windows 화면과 어긋나던 네 가지
+
+전부 Tk aqua가 Windows의 Tk와 다르게 굴어서 생긴 것이고, 전부 런처에서
+고쳤습니다. 게임 바이트코드는 건드리지 않았습니다.
+
+**(a) 장식을 뗐다 붙인 창은 다시 못 움직인다.** aqua의 Tk는
+`overrideredirect(True)`로 장식을 떼어낸 창에서 그것을 다시 꺼도 NSWindow의
+styleMask를 복원하지 않습니다. 실측: styleMask 78 → 14로 갈 뿐 titled 비트가
+돌아오지 않고, `withdraw()`/`deiconify()`로 다시 매핑해도 마찬가지입니다.
+그러면 타이틀바도 없고 게임이 compact 창에 걸어두는 드래그 바인딩도 없는 창이
+되어 **아예 잡을 곳이 없습니다**. 로켓단 습격에서 "화면 키우기"를 누르면 정확히
+그 상태가 됩니다. `install_titlebar_restore()`가 `wm_overrideredirect(False)`
+뒤에 styleMask를 직접 복원합니다 (14 → 15, titled).
+
+**(b) `⚔`가 `×`로 보인다.** macOS 시스템 폰트에는 U+2694의 쓸 만한 텍스트
+글리프가 없습니다. Tk는 이걸 두부 박스로도 안 그리고 — 그랬으면 눈에 띄었을
+텐데 — 머리카락처럼 가는 글리프로 떨어뜨려서, 게임이 쓰는 9px에서는
+`⚔ Fight` 버튼이 `× Fight`로 보입니다. VS16(U+FE0F)을 붙이면 이모지 표현이
+되어 Apple Color Emoji로 폴백합니다. 대상을 `⚔` 하나로 좁힌 근거는 실측입니다:
+게임 문자열에 쓰인 기호 134종을 전부 9px bold로 그려 잉크 픽셀을 셌고, 망가지는
+것은 `⚔` 뿐이었습니다 (잉크 20, VS16을 붙이면 65). `▶ ↩ ⚙ ⬇` 같은 것들은
+모노크롬으로 멀쩡히 나오므로 건드리지 않습니다. 훅은
+`tkinter.Misc._options` 한 군데에 겁니다 — `Widget.__init__`, `Misc.configure`,
+`Menu.add`, `Canvas._create`가 전부 그 길목을 지나므로 위젯 종류마다 훅을 걸
+필요가 없습니다.
+
+**(c) 버튼 배경색이 통째로 무시된다.** aqua의 `tk.Button`은 `-background`를
+**완전히 무시합니다**. 네이티브 버튼을 그리고 색은 버립니다.
+`bd=0`, `relief=flat`, `highlightthickness=0`을 어떻게 섞어도 같고
+(여섯 조합을 그려서 확인), `highlightbackground`는 버튼 둘레에 얇은 테를 두를
+뿐 버튼 면은 여전히 흰색입니다. 게임의 버튼 181개 중 색을 주는 건 **8개뿐**이고
+7개가 같은 노란색 `#ffd54a` 액션 버튼입니다(야생 포켓몬 토스트의 `⚔ Fight`,
+`⚔ 스테이지 N 도전!`, 선물 `🎁 보러가기`, 확인 버튼들). 그 8개만
+`MacColorButton`(배경색을 실제로 칠하는 `tk.Label` 기반)으로 바꾸고 나머지
+173개는 진짜 `tk.Button`으로 둡니다. 게임은 위젯에 `isinstance`도
+`winfo_class`도 쓰지 않으므로(disasm으로 확인) 바꿔치기가 보이지 않습니다.
+여백은 네이티브 버튼과 요청 크기가 **픽셀 단위로 같아지도록** 맞췄습니다
+(padx 17 / pady 5, 여섯 케이스에서 오차 0). 안 맞추면 색 버튼만 14×2 px 작아서
+옆에 선 네이티브 버튼과 줄이 어긋납니다.
+
+**(d) Dock 아이콘이 펫으로 바뀐다.** 게임은 시작하면서
+`win.iconphoto(True, <펫 스프라이트>)`를 부릅니다(`_setup_taskbar_icon`,
+pet.py:17476). Windows에서는 그 창의 작업표시줄 아이콘을 펫으로 바꾸는 의도한
+동작이지만, aqua에서는 **앱 아이콘 자체**를 갈아치워서 Dock의 PikaPet이
+몬스터볼에서 파이리가 됩니다. `-default`를 떼는 것으로는 못 막습니다 — 실측:
+
+```
+setApplicationIconImage_(447px)  ->  앱 아이콘 447x447
+iconphoto(False, 32px)           ->  앱 아이콘 32x32   <- default 없이도 바뀐다
+iconphoto(True,  32px)           ->  앱 아이콘 32x32
+```
+
+macOS 창에는 애초에 타이틀바 아이콘이 없으므로(문서 창의 프록시 아이콘을 빼면)
+이 호출이 창에 해주는 일은 없습니다. 그래서 원본은 그대로 부르고 직후에 앱
+아이콘만 되돌립니다.
+
 ### 배포용 DMG 만들기
 
 ```bash
@@ -183,6 +245,12 @@ onefile 번들이었고, 그 분기가 바이트코드에 아직 살아 있습�
 `disasm/pet.dis.txt`의 `IMPORT_NAME` 전부에서 뽑은 것입니다. 게임에 import가
 늘어나면 여기에 추가해야 하며, 빠지면 빌드가 아니라 실행 시점에 터집니다.
 
+앱 아이콘은 `tools/make_icon.py`가 `tools/icon.png`(몬스터볼)에서 만듭니다.
+원본은 알파가 없는 RGB라 공 바깥이 흰색인데, 그대로 쓰면 Dock에 흰 사각형이
+붙습니다. 공이 캔버스에 정확히 내접해 있어서 원형 마스크로 잘라냅니다 —
+흰색을 지우는 방식은 못 씁니다. 공 아래쪽 절반과 하이라이트도 흰색이라
+같이 지워집니다.
+
 Apple Developer 인증서가 없으면 ad-hoc 서명만 붙으므로, 다른 맥에서 처음 열 때
 **우클릭 > 열기**가 필요합니다. 인증서가 있으면
 `PIKAPET_SIGN_ID="Developer ID Application: ..." tools/make_dmg.sh` 로 서명합니다.
@@ -193,7 +261,7 @@ Apple Developer 인증서가 없으면 ad-hoc 서명만 붙으므로, 다른 맥
 cd ~/projects/pikapet && .venv/bin/python -m unittest discover -s run -v
 ```
 
-51개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
+85개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
 - `flash_taskbar`의 세 번째 인자는 `timeout`이 아니라 `interval_ms`였고,
   `acquire_single_instance_lock`엔 기본 mutex 이름 `PikaPetSingleInstanceMutex_do_bro2`가
   있었습니다 (원본 `winlayer.pyc`와 시그니처를 대조하는 테스트가 잡아냄)
@@ -256,6 +324,9 @@ run/                 macOS 실행 환경
   maclayer.py          winlayer의 macOS 구현 (Quartz/AppKit)
   test_maclayer.py     계약 테스트 34개
   test_overlay.py      오버레이 추적 로직 테스트 17개
+  test_macui.py        글리프 보정 / 색 버튼 / 앱 아이콘 테스트 27개
+  mactray.py           트레이 전용 기능을 되살린 메뉴 바 항목
+  macnotify.py         알림 (UN 우선, osascript 폴백)
   pet.pyc / winlayer.pyc / spriteanim.pyc
 bytecode/            원본 바이트코드
 src/decompiled/      함수/메서드별 디컴파일 903개 + _INDEX.txt
@@ -294,6 +365,21 @@ pycdc(Decompyle++)는 Python 3.13까지만 지원해서 3.14 지원을 직접 �
 
 - **알림 센터** — `MacTray.notify()`는 `osascript`로 알림을 띄웁니다. 시스템 설정에서
   알림 권한을 한 번 허용해야 보입니다.
+
+  **배너 클릭이 스크립트 편집기로 가는 것은 서명 문제입니다.** macOS는 ad-hoc
+  서명 앱에 알림 권한을 전혀 주지 않습니다 — 프롬프트도 뜨지 않고 알림 설정에도
+  등록되지 않으며 `UNErrorDomain Code=1`만 돌아옵니다(`dist/`, `~/Applications`
+  동일). 그래서 배포 빌드는 늘 osascript로 떨어지고, 그 배너의 소유자는 스크립트
+  편집기입니다. `run/macnotify.py`에 모던 `UNUserNotificationCenter` 경로와 클릭
+  델리게이트가 이미 들어 있으니, Developer ID로 서명하면
+  (`PIKAPET_SIGN_ID=...`) 그쪽으로 전환되고 배너를 누르면 야생 포켓몬 창이
+  열립니다.
+
+  `NSUserNotificationCenter`를 1순위로 쓰지 마세요. macOS 26에서 그 프레임워크는
+  알림을 받아 `deliveredNotifications()` 목록에만 넣고 배너를 띄우지 않으며,
+  예외도 내지 않습니다. "예외가 없으면 성공"으로 처리하면 알림이 전부 조용히
+  사라집니다. 배너 소유자가 스크립트 편집기가 되는 단점은 남지만, 메뉴 바 ◓
+  항목이 있어 알림이 안내하는 "트레이 아이콘을 클릭"을 실제로 따라갈 수 있습니다.
 - **미확인 영역** — 전투 창, PvP(websockets), 미니게임, 오목은 아직 실행해보지 않았습니다.
   전부 순수 tkinter/Python이라 문제될 이유는 없지만 검증은 안 된 상태입니다.
 

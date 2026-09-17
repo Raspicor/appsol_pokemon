@@ -72,47 +72,26 @@ say "빌드 의존성 설치 (pyinstaller + 런타임)"
 # 게임이 실제로 import하는 것만. requirements.txt 전체를 넣으면 쓰지도 않는
 # numpy 등이 따라 들어온다 (스펙의 excludes가 막아주긴 하지만 설치 시간이 아깝다).
 "$BUILD_VENV/bin/python" -m pip install --quiet \
-  pillow pystray websockets pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-Quartz
+  pillow pystray websockets pyobjc-core pyobjc-framework-Cocoa \
+  pyobjc-framework-Quartz pyobjc-framework-UserNotifications
 
 # --------------------------------------------------------------------------
 # 2. 아이콘
 # --------------------------------------------------------------------------
-# 저장소에 .icns가 없으므로 피카츄 스프라이트 첫 프레임으로 만든다. 실패해도
-# 빌드는 계속한다. 아이콘이 없으면 기본 아이콘이 붙을 뿐이다.
+# .icns는 tools/make_icon.py 가 tools/icon.png 에서 만든다. 매번 다시 만든다
+# -- 원본이나 스크립트를 고쳤는데 예전 아이콘이 그대로 붙는 일이 없도록.
 ICNS="$BUILD/PikaPet.icns"
-SPRITE="$ROOT/assets/sprites/pikachu/Idle-Anim.png"
-if [ ! -f "$ICNS" ] && [ -f "$SPRITE" ] && command -v iconutil >/dev/null 2>&1; then
-  say "아이콘 생성"
+if command -v iconutil >/dev/null 2>&1; then
+  say "아이콘 생성 (몬스터볼)"
   ICONSET="$BUILD/PikaPet.iconset"
-  rm -rf "$ICONSET"; mkdir -p "$ICONSET"
-  if "$BUILD_VENV/bin/python" - "$SPRITE" "$ICONSET" <<'PY'
-import sys
-from PIL import Image
-
-src, out = sys.argv[1], sys.argv[2]
-# 시트의 첫 프레임만 쓴다. AnimData.xml을 읽지 않고도 정사각 타일 하나를
-# 떼어낼 수 있도록, 시트 높이를 타일 크기로 본다.
-sheet = Image.open(src).convert("RGBA")
-tile = min(sheet.width, sheet.height)
-frame = sheet.crop((0, 0, tile, tile))
-# 픽셀 아트라서 확대는 NEAREST로, 축소만 LANCZOS로 한다.
-for size in (16, 32, 64, 128, 256, 512, 1024):
-    for scale, suffix in ((1, ""), (2, "@2x")):
-        px = size * scale
-        if px > 1024:
-            continue
-        resample = Image.NEAREST if px >= tile else Image.LANCZOS
-        img = Image.new("RGBA", (px, px), (0, 0, 0, 0))
-        pad = max(1, px // 10)          # 아이콘 그리드에 맞게 약간 여백
-        inner = frame.resize((px - pad * 2, px - pad * 2), resample)
-        img.paste(inner, (pad, pad), inner)
-        img.save(f"{out}/icon_{size}x{size}{suffix}.png")
-PY
-  then
+  rm -rf "$ICONSET" "$ICNS"
+  if "$BUILD_VENV/bin/python" "$ROOT/tools/make_icon.py" --iconset "$ICONSET"; then
     iconutil -c icns "$ICONSET" -o "$ICNS" || warn "iconutil 실패. 아이콘 없이 진행합니다."
   else
     warn "아이콘 렌더 실패. 아이콘 없이 진행합니다."
   fi
+else
+  warn "iconutil이 없습니다. 아이콘 없이 진행합니다."
 fi
 [ -f "$ICNS" ] && echo "    $ICNS" || ICNS=""
 
@@ -211,7 +190,14 @@ cat <<EOF
   2. 처음 실행할 때는 **우클릭 > 열기**를 하고 한 번 더 확인해야 합니다.
      ad-hoc 서명이라 Gatekeeper가 막습니다. 터미널을 쓸 수 있다면 이것도 됩니다:
          xattr -dr com.apple.quarantine /Applications/PikaPet.app
-  3. 메뉴는 펫을 우클릭하면 나옵니다.
+  3. 메뉴는 펫을 우클릭하면 나옵니다. 메뉴 바의 ◓ 에는 우클릭 메뉴에 없는
+     항목(몬스터볼에서 꺼내기, 야생 포켓몬 확인, 알림 테스트)이 있습니다.
+
+알림에 대해: ad-hoc 서명 빌드는 알림을 osascript로 띄우므로 배너의 소유자가
+스크립트 편집기가 되고, 배너를 클릭하면 스크립트 편집기가 열립니다. macOS는
+ad-hoc 서명 앱에 알림 권한을 주지 않아서 (프롬프트조차 뜨지 않습니다) 우회할 수
+없습니다. Developer ID로 서명하면 run/macnotify.py 가 모던 API로 전환되고,
+배너가 PikaPet 소유가 되어 클릭 시 야생 포켓몬 창이 열립니다.
 
 공증(notarization)까지 하려면 Apple Developer 인증서로 다시 서명해야 합니다:
 

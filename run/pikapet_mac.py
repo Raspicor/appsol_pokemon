@@ -209,6 +209,430 @@ def install_sprite_alpha_patch(transparent=False):
     Image.new = new
 
 
+# Windows Tk의 TkDefaultFont는 {Segoe UI} 9 인데, aqua에서는 시스템 폰트 10이다.
+# 더 크고 더 넓다. PikaPet은 버튼 폭을 `width=N` 으로 주고 Tk에서 그 단위는
+# 픽셀이 아니라 **문자 수**이므로, 기본 폰트가 넓어지면 버튼 줄이 통째로 넓어진다.
+# compact 전투 창은 게임이 300x380으로 하드코딩해서 여유가 없다. 실측(전투 창의
+# 내용 프레임 요청 폭 대 캔버스 292px):
+#
+#     시스템 폰트 10  ->  309px  (17px 넘침, 내용이 x=-17 로 밀려 왼쪽이 잘린다)
+#     시스템 폰트  9  ->  295px  ( 3px 넘침)
+#     시스템 폰트  8  ->  281px  (넘치지 않음)
+#
+# 그래서 8로 내린다. 게임은 글자 있는 라벨 대부분에 ('맑은 고딕', N) 을 직접
+# 지정하므로 이 값이 닿는 곳은 사실상 폰트를 안 준 위젯 — 즉 버튼 — 뿐이고,
+# 그게 정확히 넘치던 자리다.
+DEFAULT_FONT_SIZE = 8
+
+
+def install_font_defaults(root):
+    """기본 폰트를 Windows 레이아웃이 가정하는 비율로 맞춘다.
+
+    게임이 위젯을 만들기 전에 불러야 한다. 실패해도 그냥 넘어간다. 레이아웃이
+    조금 넘치는 것이 앱이 안 뜨는 것보다 낫다.
+    """
+    try:
+        from tkinter import font as tkfont
+
+        current = tkfont.nametofont("TkDefaultFont", root=root)
+        before = current.actual("size")
+        if before <= DEFAULT_FONT_SIZE:
+            return before
+        current.configure(size=DEFAULT_FONT_SIZE)
+        return before
+    except Exception as exc:
+        print(f"  기본 폰트 조정 실패: {type(exc).__name__}: {exc}", flush=True)
+        return None
+
+
+def _restore_titlebar(win):
+    """overrideredirect를 끈 Tk 창에 macOS 타이틀바를 돌려준다.
+
+    aqua의 Tk는 `overrideredirect(True)` 로 장식을 떼어낸 창에서 그것을 다시
+    끄면 Tk 쪽 플래그만 바뀌고 NSWindow의 styleMask는 그대로 둔다. 실측:
+    styleMask 78 -> 14 로 갈 뿐 titled 비트가 돌아오지 않고, withdraw/deiconify
+    로 다시 매핑해도 마찬가지다. 그러면 타이틀바도 없고 게임이 compact 창에
+    걸어두는 드래그 바인딩도 없는 창이 되어 **아예 움직일 수 없다**. 로켓단
+    습격에서 "화면 키우기"를 누르면 정확히 그 상태가 된다.
+
+    그래서 styleMask를 직접 복원한다. Windows에서 이 창이 갖는 것과 같은,
+    끌 수 있는 네이티브 타이틀바가 생긴다.
+    """
+    try:
+        import AppKit
+
+        titled = getattr(AppKit, "NSWindowStyleMaskTitled", 1)
+        closable = getattr(AppKit, "NSWindowStyleMaskClosable", 2)
+        mini = getattr(AppKit, "NSWindowStyleMaskMiniaturizable", 4)
+
+        width, height = win.winfo_width(), win.winfo_height()
+        if width < 40 or height < 40:
+            return
+        best = None
+        for ns in AppKit.NSApp().windows():
+            frame = ns.frame()
+            if (abs(int(frame.size.width) - width) <= 6
+                    and abs(int(frame.size.height) - height) <= 6):
+                gap = abs(int(frame.origin.x) - win.winfo_rootx())
+                if best is None or gap < best[0]:
+                    best = (gap, ns)
+        if best is None:
+            return
+        ns = best[1]
+        if ns.styleMask() & titled:
+            return
+        ns.setStyleMask_(ns.styleMask() | titled | closable | mini)
+        try:
+            ns.setTitle_(win.title())
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def install_titlebar_restore():
+    """`overrideredirect(False)` 뒤에 타이틀바를 되살리도록 Tk를 훅한다.
+
+    창이 다시 매핑된 뒤에 손대야 하므로 after_idle로 미룬다. 실패해도 조용히
+    넘어간다. 창을 못 옮기는 것이 앱이 죽는 것보다는 낫다.
+    """
+    original = tk.Wm.wm_overrideredirect
+
+    def wm_overrideredirect(self, boolean=None):
+        result = original(self, boolean)
+        if boolean is not None and not boolean:
+            try:
+                self.after_idle(lambda: _restore_titlebar(self))
+            except Exception:
+                pass
+        return result
+
+    tk.Wm.wm_overrideredirect = wm_overrideredirect
+    tk.Wm.overrideredirect = wm_overrideredirect
+
+
+# --------------------------------------------------------------------------
+# 2-c. 기호 글리프
+# --------------------------------------------------------------------------
+# macOS 시스템 폰트에는 U+2694(⚔)의 쓸 만한 텍스트 글리프가 없다. Tk는 이걸
+# 두부 박스로도 안 그리고 -- 그랬으면 눈에 띄었을 텐데 -- 머리카락처럼 가는
+# 글리프로 떨어뜨린다. 게임이 쓰는 9px에서는 그냥 작은 × 하나로 보여서
+# '⚔ Fight' 버튼이 '× Fight' 가 된다. Windows에서는 맑은 고딕의 폰트 링크가
+# 이걸 제대로 된 칼 그림으로 그린다.
+#
+# VS16(U+FE0F)을 붙이면 이모지 표현이 되고, 그러면 Tk가 Apple Color Emoji로
+# 폴백해서 칼 두 자루가 제대로 나온다. 게임 코드에도 이미 한 군데
+# ('⚔️\nVS') 는 VS16이 붙어 있다 -- 원작자도 알고 있었던 것 같다.
+#
+# 대상을 ⚔ 하나로 좁힌 근거: 게임 문자열에 쓰인 기호 134종을 전부 9px bold로
+# 그려서 잉크 픽셀을 셌다. 망가지는 건 ⚔ 뿐이다 (잉크 20, VS16을 붙이면 65).
+# ▶ ↩ ⚙ ⬇ 같은 것들은 모노크롬으로 멀쩡히 나오므로 건드리지 않는다 -- 그걸
+# 이모지로 바꾸는 건 고치는 게 아니라 취향을 바꾸는 것이다.
+BROKEN_GLYPHS = {"\u2694": "\u2694\ufe0f"}
+
+# 사람이 읽는 글자가 들어가는 옵션만 손댄다. 다른 옵션에 저 문자가 들어갈 일은
+# 없지만, 폭이 좁을수록 사고가 적다.
+TEXT_OPTIONS = frozenset(("text", "label", "title"))
+
+
+def _fix_glyphs(value):
+    """표시용 문자열에서 macOS가 못 그리는 기호를 이모지 표현으로 바꾼다."""
+    for bad, good in BROKEN_GLYPHS.items():
+        if bad in value and good not in value:
+            value = value.replace(bad, good)
+    return value
+
+
+def install_glyph_fix():
+    """모든 위젯의 텍스트 옵션에 글리프 보정을 건다.
+
+    `Misc._options` 는 tkinter가 파이썬 키워드를 Tcl 옵션으로 바꾸는 단 하나의
+    길목이다. Widget.__init__, Misc.configure, Menu.add, Canvas._create 가 전부
+    여기를 지난다. 그래서 위젯 종류마다 훅을 거는 대신 이 하나만 감싼다.
+    ⚔ 는 버튼 10곳, 라벨 6곳, 메뉴 항목에도 나오므로 그 전부가 필요하다.
+    """
+    original = tk.Misc._options
+
+    def _options(self, cnf, kw=None):
+        try:
+            if kw:
+                for key in TEXT_OPTIONS:
+                    v = kw.get(key)
+                    if isinstance(v, str):
+                        kw[key] = _fix_glyphs(v)
+            if isinstance(cnf, dict):
+                for key in TEXT_OPTIONS:
+                    v = cnf.get(key)
+                    if isinstance(v, str):
+                        cnf[key] = _fix_glyphs(v)
+        except Exception:
+            pass
+        return original(self, cnf, kw)
+
+    tk.Misc._options = _options
+
+
+# --------------------------------------------------------------------------
+# 2-d. 색 있는 버튼
+# --------------------------------------------------------------------------
+# aqua의 tk.Button은 -background 를 **완전히 무시한다**. 네이티브 버튼을 그리고
+# 색은 버린다. bd=0, relief=flat, highlightthickness=0 을 어떻게 섞어도 같다
+# (여섯 조합을 그려서 확인했다). highlightbackground 는 버튼 둘레에 얇은 테를
+# 두를 뿐 버튼 면은 여전히 하얗다.
+#
+# 게임에서 버튼은 181개인데 그중 색을 주는 건 8개뿐이고, 7개가 같은 노란색
+# '#ffd54a' 액션 버튼이다 -- 야생 포켓몬 토스트의 '⚔ Fight', 배틀의 '⚔ 공격',
+# '⚔ 스테이지 N 도전!', 선물 '🎁 보러가기', 확인 버튼들. Windows에서는 노란
+# 버튼이고 macOS에서는 다른 버튼과 구별되지 않는 흰 버튼이 된다.
+#
+# 그래서 색을 준 버튼만 Label로 흉내 낸다. Label은 배경색을 그대로 칠한다.
+# 나머지 173개는 진짜 tk.Button 그대로 두어 네이티브 모양을 지킨다. 게임은
+# 위젯에 isinstance 도 winfo_class 도 쓰지 않으므로 (disasm으로 확인) 바꿔치기가
+# 보이지 않는다.
+
+# 눌렀을 때 얼마나 어두워지는가. 값이 클수록 눌린 티가 난다.
+PRESS_DARKEN = 0.82
+HOVER_LIGHTEN = 1.06
+
+# 실측: 이 여백을 주면 같은 text/font/width 로 만든 네이티브 버튼과
+# 요청 크기가 정확히 같아진다.
+BUTTON_PADX = 17
+BUTTON_PADY = 5
+
+
+def _shade(color, factor):
+    """#rrggbb 를 factor 배로 밝게/어둡게. 실패하면 원래 색."""
+    try:
+        if not (isinstance(color, str) and color.startswith("#") and len(color) == 7):
+            return color
+        parts = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+        return "#%02x%02x%02x" % tuple(
+            max(0, min(255, int(round(p * factor)))) for p in parts)
+    except Exception:
+        return color
+
+
+def _is_light(color):
+    """#rrggbb 가 밝은 색인가. 판단할 수 없으면 밝다고 본다 (검정 글자가 기본)."""
+    try:
+        if not (isinstance(color, str) and color.startswith("#") and len(color) == 7):
+            return True
+        r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 140
+    except Exception:
+        return True
+
+
+class MacColorButton(tk.Label):
+    """배경색을 실제로 칠하는 버튼. aqua의 tk.Button 대용.
+
+    tk.Button과 Label은 옵션이 거의 같다 (text/font/bg/fg/width/state/anchor/
+    justify/wraplength/relief/bd/padx/pady/image/compound). 다른 것은 `command`와
+    `invoke()`/`flash()` 뿐이라, 그 셋만 얹으면 게임 쪽에서는 버튼과 구별되지
+    않는다.
+    """
+
+    def __init__(self, master=None, cnf=None, **kw):
+        kw = dict(cnf or {}, **kw)
+        self._command = kw.pop("command", None)
+        # Button에만 있고 Label에는 없는 옵션들. 조용히 버린다.
+        for gone in ("default", "overrelief", "repeatdelay", "repeatinterval"):
+            kw.pop(gone, None)
+
+        bg = kw.get("bg", kw.get("background"))
+        # 진짜 tk.Button의 기본 글자색은 검정이다. Label의 기본은
+        # systemTextColor 라서, 그냥 두면 다크 모드에서 노란 버튼 위에 흰
+        # 글자가 찍혀 읽을 수 없게 된다. 배경 밝기를 보고 정한다.
+        if "fg" not in kw and "foreground" not in kw:
+            kw["fg"] = "#111111" if _is_light(bg) else "#ffffff"
+        # 네이티브 aqua 버튼과 같은 자리를 차지하게 맞춘 값이다. 안 맞추면
+        # 색 버튼만 14x2 px 작아서, 옆에 선 네이티브 버튼과 줄이 어긋난다.
+        kw.setdefault("padx", BUTTON_PADX)
+        kw.setdefault("pady", BUTTON_PADY)
+        kw.setdefault("relief", "flat")
+        kw.setdefault("bd", 0)
+        kw.setdefault("cursor", "pointinghand")
+        kw.setdefault("highlightthickness", 1)
+        kw.setdefault("highlightbackground", _shade(bg, 0.78))
+        super().__init__(master, **kw)
+
+        self._base_bg = bg
+        self.bind("<Enter>", self._on_enter, add="+")
+        self.bind("<Leave>", self._on_leave, add="+")
+        self.bind("<ButtonPress-1>", self._on_press, add="+")
+        self.bind("<ButtonRelease-1>", self._on_release, add="+")
+
+    # -- 눌린 느낌 ---------------------------------------------------------
+
+    def _enabled(self):
+        try:
+            return str(self.cget("state")) != "disabled"
+        except Exception:
+            return True
+
+    def _paint(self, factor):
+        if self._base_bg and self._enabled():
+            try:
+                tk.Label.configure(self, bg=_shade(self._base_bg, factor))
+            except Exception:
+                pass
+
+    def _on_enter(self, _event=None):
+        self._paint(HOVER_LIGHTEN)
+
+    def _on_leave(self, _event=None):
+        self._paint(1.0)
+
+    def _on_press(self, _event=None):
+        self._paint(PRESS_DARKEN)
+
+    def _on_release(self, event=None):
+        self._paint(HOVER_LIGHTEN)
+        # 버튼 밖에서 손을 떼면 취소. 진짜 버튼과 같은 동작이다.
+        if event is not None:
+            if not (0 <= event.x < self.winfo_width()
+                    and 0 <= event.y < self.winfo_height()):
+                self._paint(1.0)
+                return
+        self.invoke()
+
+    # -- 버튼 API ----------------------------------------------------------
+
+    def invoke(self):
+        if self._command is None or not self._enabled():
+            return None
+        return self._command()
+
+    def flash(self):
+        for factor in (PRESS_DARKEN, 1.0, PRESS_DARKEN, 1.0):
+            self._paint(factor)
+            self.update_idletasks()
+
+    def configure(self, cnf=None, **kw):
+        kw = dict(cnf or {}, **kw)
+        if "command" in kw:
+            self._command = kw.pop("command")
+        for gone in ("default", "overrelief", "repeatdelay", "repeatinterval"):
+            kw.pop(gone, None)
+        new_bg = kw.get("bg", kw.get("background"))
+        if new_bg:
+            self._base_bg = new_bg
+        if not kw:
+            return None
+        return tk.Label.configure(self, **kw)
+
+    config = configure
+
+    def cget(self, key):
+        if key == "command":
+            return self._command
+        return tk.Label.cget(self, key)
+
+    def __setitem__(self, key, value):
+        self.configure(**{key: value})
+
+    def __getitem__(self, key):
+        return self.cget(key)
+
+
+def install_button_colors():
+    """배경색을 준 tk.Button만 MacColorButton으로 바꿔치기한다.
+
+    게임은 `tk.Button(...)` 으로 부르고 이름은 호출할 때 tkinter 모듈에서
+    찾으므로, 모듈 속성을 갈아끼우면 그대로 걸린다. 색을 안 주는 버튼은
+    진짜 tk.Button을 돌려줘서 네이티브 모양을 지킨다.
+    """
+    original = tk.Button
+
+    def Button(master=None, cnf=None, **kw):
+        merged = dict(cnf or {}, **kw)
+        bg = merged.get("bg", merged.get("background"))
+        if isinstance(bg, str) and bg.startswith("#"):
+            try:
+                return MacColorButton(master, **merged)
+            except Exception:
+                pass
+        return original(master, cnf or {}, **kw)
+
+    Button.__doc__ = MacColorButton.__doc__
+    tk.Button = Button
+    return original
+
+# --------------------------------------------------------------------------
+# 2-e. 앱(Dock) 아이콘
+# --------------------------------------------------------------------------
+# 게임은 시작할 때 `win.iconphoto(True, <펫 스프라이트>)` 를 부른다
+# (`_setup_taskbar_icon`, pet.py:17476). Windows에서는 그 창의 작업표시줄
+# 아이콘을 펫으로 바꾸는, 의도한 동작이다.
+#
+# aqua에서는 그게 **앱 아이콘 자체**를 갈아치운다. 그래서 Dock의 PikaPet이
+# 몬스터볼에서 파이리가 된다. `-default` 를 떼는 것으로는 못 막는다 -- 실측:
+#
+#     setApplicationIconImage_(447px)  ->  앱 아이콘 447x447
+#     iconphoto(False, 32px)           ->  앱 아이콘 32x32   <- default 없이도 바뀐다
+#     iconphoto(True,  32px)           ->  앱 아이콘 32x32
+#
+# macOS 창에는 애초에 타이틀바 아이콘이 없으므로 (문서 창의 프록시 아이콘을
+# 빼면) 이 호출이 창에 해주는 일은 없다. 그래서 원본은 그대로 부르고, 직후에
+# 앱 아이콘만 우리 것으로 되돌린다.
+
+# 소스에서 그냥 실행할 때 쓸 아이콘. 번들에서는 .icns가 이미 붙어 있지만,
+# 게임이 덮어쓴 뒤 되돌리려면 어차피 이미지가 필요하다.
+ICON_CANDIDATES = (
+    os.path.join(HERE, "..", "Resources", "PikaPet.icns"),   # .app 안
+    os.path.join(HERE, "..", "tools", "icon.png"),           # 저장소에서 실행
+)
+
+_app_icon = None            # 한 번 읽어서 들고 있는 NSImage
+
+
+def app_icon_image():
+    """앱 아이콘 NSImage. 못 찾으면 None."""
+    global _app_icon
+    if _app_icon is not None:
+        return _app_icon
+    try:
+        import AppKit
+
+        for path in ICON_CANDIDATES:
+            path = os.path.abspath(path)
+            if not os.path.exists(path):
+                continue
+            image = AppKit.NSImage.alloc().initWithContentsOfFile_(path)
+            if image is not None:
+                _app_icon = image
+                return image
+    except Exception as exc:
+        print(f"  앱 아이콘 읽기 실패: {type(exc).__name__}: {exc}", flush=True)
+    return None
+
+
+def set_app_icon():
+    """Dock 아이콘을 몬스터볼로 맞춘다. 아이콘이 없으면 그냥 넘어간다."""
+    image = app_icon_image()
+    if image is None:
+        return False
+    try:
+        import AppKit
+
+        AppKit.NSApp().setApplicationIconImage_(image)
+        return True
+    except Exception:
+        return False
+
+
+def install_app_icon_guard():
+    """`iconphoto` 가 Dock 아이콘을 갈아치우면 곧바로 되돌린다."""
+    original = tk.Wm.wm_iconphoto
+
+    def wm_iconphoto(self, *args, **kw):
+        result = original(self, *args, **kw)
+        set_app_icon()
+        return result
+
+    tk.Wm.wm_iconphoto = wm_iconphoto
+    tk.Wm.iconphoto = wm_iconphoto
+
 # --------------------------------------------------------------------------
 # 3. 트레이 아이콘
 # --------------------------------------------------------------------------
@@ -230,19 +654,25 @@ class MacTray:
         self._app = app
         self.icon = None            # PetApp이 PIL 이미지를 넣는 자리. 쓰이지 않음
         self.visible = False
+        self._notifier = _make_notifier(app)
 
     def notify(self, message, title="PikaPet"):
-        """Tk 이벤트 루프를 막지 않고 알림 센터에 띄운다."""
-        try:
-            if _deliver_notification(message, title):
+        """Tk 이벤트 루프를 막지 않고 알림을 띄운다.
+
+        실제 발송은 macnotify가 한다. 번들로 묶였으면 모던 API로 이 앱 소유의
+        배너를 띄우고(눌렀을 때 PikaPet이 올라온다), 그게 거부되면 osascript로
+        떨어진다. 자세한 근거는 macnotify.py 참고.
+        """
+        if self._notifier is not None:
+            try:
+                self._notifier.notify(message, title)
                 return
-        except Exception:
-            pass
+            except Exception:
+                pass
         try:
-            script = 'display notification {} with title {}'.format(
-                _applescript_string(message), _applescript_string(title))
-            subprocess.Popen(["osascript", "-e", script],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            import macnotify
+
+            macnotify.post_with_osascript(message, title)
         except Exception:
             pass
 
@@ -253,35 +683,29 @@ class MacTray:
         """할 일 없음. 내려야 할 백그라운드 트레이 스레드가 없다."""
 
 
-def _deliver_notification(message, title):
-    """이 프로세스 소유의 배너를 띄운다. 나갔으면 True.
+def _make_notifier(app):
+    """이 앱 소유로 알림을 띄우는 객체. 실패하면 None (osascript로 떨어진다)."""
+    root = getattr(app, "root", None)
+    if root is None:
+        return None
+    try:
+        import macnotify
 
-    `osascript -e 'display notification'`이 뻔한 방법이지만, 그렇게 띄운 배너는
-    스크립트 편집기 소유가 된다. 그래서 하나를 클릭하면 — 야생 포켓몬 알림 같은
-    것 — 펫이 아니라 스크립트 편집기가 올라온다. 프레임워크를 직접 거치면 배너가
-    실행 중인 인터프리터에 귀속되므로, 클릭했을 때 우리만 활성화된다.
+        def on_click():
+            """배너를 눌렀을 때. Tk 타이머 안이라 게임을 직접 건드려도 된다."""
+            opener = getattr(app, "_open_pending_encounter", None)
+            if opener is not None and getattr(app, "_pending_encounter", None):
+                opener()
+                return
+            try:
+                app.root.deiconify()
+            except Exception:
+                pass
 
-    NSUserNotificationCenter는 macOS 11부터 deprecated지만 아직 배달된다.
-    `MacTray.notify`의 osascript 경로는 이게 끝내 멈추는 릴리스를 위한 폴백으로
-    남겨둔다.
-    """
-    from Foundation import NSUserNotification, NSUserNotificationCenter
-
-    center = NSUserNotificationCenter.defaultUserNotificationCenter()
-    if center is None:
-        return False
-    note = NSUserNotification.alloc().init()
-    note.setTitle_(str(title))
-    note.setInformativeText_(str(message))
-    center.deliverNotification_(note)
-    return True
-
-
-def _applescript_string(text):
-    """AppleScript 소스에 끼워 넣을 수 있게 파이썬 문자열을 인용한다."""
-    escaped = str(text).replace("\\", "\\\\").replace('"', '\\"')
-    escaped = escaped.replace("\r", " ").replace("\n", " ")
-    return '"' + escaped + '"'
+        return macnotify.Notifier(root, on_click=on_click)
+    except Exception as exc:
+        print(f"  알림 초기화 실패: {type(exc).__name__}: {exc}", flush=True)
+        return None
 
 
 def install_window_patch(pet):
@@ -293,6 +717,11 @@ def install_window_patch(pet):
     original = pet.setup_pet_window
 
     def setup_pet_window(root):
+        set_app_icon()
+        before = install_font_defaults(root)
+        if before and before != DEFAULT_FONT_SIZE:
+            print(f"  기본 폰트: {before} -> {DEFAULT_FONT_SIZE} "
+                  f"(버튼 폭이 문자 수 단위라 창이 넘치는 것을 막는다)", flush=True)
         mode = transparency_mode(root)
         if mode == "native":
             # MAGIC은 게임 본래의 '#ff00ff'로 일부러 남겨둔다. 오버레이가 그것을
@@ -407,6 +836,10 @@ def main():
     sys.modules["winlayer"] = maclayer   # pet.pyc가 `import winlayer`를 돌기 전에
 
     install_transparency_shim()
+    install_titlebar_restore()
+    install_glyph_fix()
+    install_button_colors()
+    install_app_icon_guard()
     remapped_buttons = install_right_click_fallback()
 
     pet = load_pet()

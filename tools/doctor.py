@@ -85,6 +85,13 @@ def main():
               "없으면 펫이 검은 판 위에 그려진다")
         check("run/mactray.py 존재", os.path.isfile(os.path.join(RUN, "mactray.py")),
               "없으면 몬스터볼에 들어간 펫을 꺼낼 수 없다")
+        check("run/macnotify.py 존재", os.path.isfile(os.path.join(RUN, "macnotify.py")))
+        try:
+            import UserNotifications  # noqa: F401
+            check("pyobjc UserNotifications import 가능", True)
+        except Exception as exc:
+            check("pyobjc UserNotifications import 가능", False,
+                  f"{type(exc).__name__}: 알림 배너가 스크립트 편집기 소유가 된다")
     elif os.name == "nt":
         check("run/winlayer.pyc 존재", os.path.isfile(os.path.join(RUN, "winlayer.pyc")),
               "Windows에서는 게임이 이걸 직접 import한다")

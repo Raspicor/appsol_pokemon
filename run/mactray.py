@@ -153,12 +153,26 @@ def install(app, root):
             fn()
         return run
 
+    def test_notification():
+        """알림이 실제로 뜨는지, 그리고 누르면 어디로 가는지 확인하는 용도.
+
+        알림은 조용히 실패하기 쉬운 영역이다 (권한, 집중 모드, 프레임워크가
+        받아놓고 안 띄우는 경우). 눌러볼 수 있는 자리를 하나 두는 편이
+        "왜 안 오지"를 훨씬 빨리 끝낸다.
+        """
+        icon = getattr(app, "tray_icon", None)
+        if icon is None:
+            print("  tray_icon이 없습니다", flush=True)
+            return
+        icon.notify("알림 테스트입니다. 이 배너를 눌러보세요.", "PikaPet")
+
     actions = [
         ("🔴 몬스터볼에서 꺼내기", call("exit_ball")),
         ("🌿 야생 포켓몬 확인", call("_open_pending_encounter")),
         ("⚔ 배틀 창 복구", call("_restore_battle_window")),
         (None, None),
         ("🎯 화면 중앙으로 부르기", call("force_recall")),
+        ("🔔 알림 테스트", test_notification),
         (None, None),
         ("❌ 종료", call("quit_app")),
     ]
