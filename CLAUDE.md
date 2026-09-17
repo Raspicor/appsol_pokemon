@@ -10,7 +10,7 @@ what came out of it plus the work to run it on macOS.
 after the fact and is *not* the build input — never treat it as editable source
 and never regenerate `pet.pyc` from it.
 
-The port works by loading that bytecode unmodified and patching four things at
+The port works by loading that bytecode unmodified and patching five things at
 runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 
 ## Commands
@@ -18,7 +18,8 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ```bash
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
-.venv/bin/python -m unittest discover -s run -v       # 34 tests, all should pass
+tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
+.venv/bin/python -m unittest discover -s run -v       # 51 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -61,14 +62,19 @@ with junctions, which need no admin rights.
 | Path | What it is |
 |---|---|
 | `run/pikapet_mac.py` | The macOS launcher. All five runtime patches live here. |
+| `run/overlay.py` | Native AppKit sprite windows — the only way to get real transparency. |
 | `run/pikapet.bat` | The Windows launcher: runs `pet.pyc` directly. |
 | `run/maclayer.py` | macOS implementation of the app's `winlayer` API. |
+| `run/mactray.py` | Menu bar item carrying the three tray-only actions. |
 | `run/test_maclayer.py` | Contract tests for `maclayer`. |
+| `run/test_overlay.py` | Tests for the overlay's tracking logic. |
 | `run/pet.pyc` | **The game.** Windows-built bytecode, run as-is. |
 | `disasm/` | CPython `dis` output. Authoritative. |
 | `src/decompiled/` | Per-function decompilation. Partially wrong — see below. |
 | `install.sh` / `install.ps1` | Setup for macOS / Windows. |
 | `tools/doctor.py` | Environment check both installers end with. |
+| `tools/make_dmg.sh` | Builds PikaPet.app and wraps it in a .dmg. |
+| `tools/pikapet.spec` | The PyInstaller spec that script drives. |
 | `tools/` | Unpackers, and a pycdc patched for Python 3.14. |
 | `README.md` | Full analysis: how the app works, what was found, why. |
 
@@ -87,7 +93,7 @@ Two sources, and they are not equally trustworthy.
 disassembly before acting on it.** `src/decompiled/_INDEX.txt` maps every
 function to its source line.
 
-## The four patches, and why each exists
+## The five patches, and why each exists
 
 All in `run/pikapet_mac.py`. Do not "simplify" these without reading the reason.
 
@@ -101,17 +107,77 @@ All in `run/pikapet_mac.py`. Do not "simplify" these without reading the reason.
    the attribute call, so letting it raise leaves companion windows empty.
 
 3. **`MAGIC` → `systemTransparent`** — the magenta chroma key. Only applied
-   after probing that this Tk really supports it.
+   after probing that this Tk really supports it, and only on the fallback
+   path — the overlay reads `#ff00ff` as its marker and leaves it alone.
 
-4. **`PetApp.setup_tray` → `MacTray`** — pystray's macOS backend calls
-   `NSApplication.run()`, which is main-thread-only; the app starts it on a
+4. **`PetApp.setup_tray` → `MacTray` + `mactray.py`** — pystray's macOS backend
+   calls `NSApplication.run()`, which is main-thread-only; the app starts it on a
    daemon thread. That is a native `SIGTRAP` that kills the process and which
-   the app's own try/except cannot catch. The tray menu is not reimplemented
-   because `PetApp.build_menu` (right-click on the pet) already has everything
-   the tray had and more.
+   the app's own try/except cannot catch.
+
+   `PetApp.build_menu` (right-click the pet) covers nearly all of the tray, but
+   **three actions live only in the tray**: `exit_ball`,
+   `_open_pending_encounter` and `_restore_battle_window`. `exit_ball` is the
+   dangerous one — once the pet is in the Poké Ball its window is unmapped, so
+   there is nothing left to right-click and the pet can never come out. The
+   wild-Pokémon notification even tells the user to click the tray icon. So
+   `mactray.py` puts those three (plus a recall and quit) in a real NSStatusItem,
+   created on Tk's main thread, which needs no run loop of its own. Its menu
+   actions are AppKit callbacks, so they only enqueue -- see the Tcl rule below.
+
+5. **The magenta plate → `overlay.py`** — every sprite frame is pasted onto a
+   literal `Image.new('RGB', size, (255, 0, 255))` (pet.py:4264 and 7252), so
+   patch 3 cannot reach it. Tk cannot make that plate disappear either: on aqua
+   it renders each toplevel into a backing store with **no alpha channel**
+   (`kCGImageAlphaNoneSkipLast`, even though the content view reports
+   `isOpaque = NO` and the NSWindow is already non-opaque with a clear
+   background), so anything Tk draws composites solid. Measured on Tk 9.0.4;
+   Tk 8.6.18 instead punches the whole window out, contents and all. So the
+   plate becomes a real transparent RGBA one and the sprite is drawn by a
+   borderless NSWindow parked over the Tk window, which keeps geometry,
+   dragging and the context menu at alpha 0.004 — low enough to be invisible,
+   high enough that AppKit still hit-tests it. A window is only made invisible
+   once its overlay is actually drawing, so a misjudged window falls back to the
+   old look rather than vanishing. `PIKAPET_OVERLAY=0` forces the old path.
+
+## Packaging a .dmg
+
+`tools/make_dmg.sh` builds a self-contained `PikaPet.app` (Python 3.14, Tcl/Tk,
+pillow, pyobjc and the 123 MB of assets all inside) and wraps it in a
+compressed disk image. ~173 MB app, ~114 MB dmg, about five minutes.
+
+It builds its own venv under `build/` so the runtime `.venv` is untouched, and
+`build/` and `dist/` are gitignored.
+
+Two things make this work, and neither is obvious:
+
+- **PyInstaller is the app's native format.** `PikaPet.exe` was a PyInstaller
+  onefile bundle, and that branch is still live in the bytecode: when
+  `sys.frozen` is set, pet.pyc reads assets from `sys._MEIPASS` and saves to
+  `$APPDATA/PikaPet` (pet.py:33-50). `_here()` in the launcher returns
+  `sys._MEIPASS` for the same reason. A side benefit: the duplicate
+  `run/pet_state.json` that a source run writes does not happen in the bundle.
+- **pet.pyc is a data file, so PyInstaller cannot see its imports.** The spec
+  lists them by hand, extracted from `IMPORT_NAME` in `disasm/pet.dis.txt`
+  (plus `xml.etree.ElementTree` for spriteanim.pyc). If the game ever gains an
+  import, add it to `hiddenimports` or the bundle will fail at runtime, not at
+  build time. The script's bundle check catches missing *data*, not missing
+  modules.
+
+Without an Apple Developer certificate the app is only ad-hoc signed, so
+Gatekeeper blocks it on another Mac until the user right-click-opens it once.
+`PIKAPET_SIGN_ID=...` signs with a real identity instead.
 
 ## Gotchas found the hard way
 
+- **Never call Tcl from an AppKit callback.** Tk's mainloop pumps the macOS run
+  loop, so an NSView mouse handler or an NSTimer target runs *inside*
+  `Tcl_DoOneEvent`. Calling `event_generate` (or anything else Tcl) from there
+  detaches the Python thread state, and the next `after` timer aborts the
+  process with `PyEval_RestoreThread: the current Python thread state is NULL`.
+  It is not a rare race: reproduced 2/2 in isolation and 2/2 in the real app,
+  within seconds. overlay.py's mouse handlers therefore only append to a deque,
+  and `_Manager.tick` -- already a Tcl callback -- drains it.
 - The Dock can be on a **non-primary** screen. `get_taskbar_rect` scans every
   screen; a `screens()[0]`-only version returns `None` on this machine.
 - `maclayer` signatures are pinned against the real `winlayer.pyc` by test.

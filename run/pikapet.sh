@@ -1,8 +1,8 @@
 #!/bin/bash
-# Launch PikaPet on macOS. Set the machine up with ../install.sh first.
+# macOS에서 PikaPet 실행. 먼저 ../install.sh로 환경을 준비하세요.
 #
-# The venv defaults to the repo's own .venv so it survives a reboot; PIKAPET_VENV
-# overrides it, and the old /tmp/pikaenv is still honoured if that is all there is.
+# venv는 재부팅 후에도 남도록 저장소 안의 .venv를 기본으로 쓴다. PIKAPET_VENV로
+# 덮어쓸 수 있고, 예전 /tmp/pikaenv만 있는 경우에도 그것을 인정한다.
 set -e
 cd "$(dirname "$0")"
 
@@ -13,8 +13,8 @@ elif [ -x "../.venv/bin/python" ]; then
 elif [ -x "/tmp/pikaenv/bin/python" ]; then
   VENV="/tmp/pikaenv"
 else
-  echo "No virtualenv found. Run ./install.sh from the repo root," >&2
-  echo "or set PIKAPET_VENV to an existing one." >&2
+  echo "virtualenv를 찾을 수 없습니다. 저장소 루트에서 ./install.sh를 실행하거나," >&2
+  echo "PIKAPET_VENV를 기존 venv 경로로 지정하세요." >&2
   exit 1
 fi
 
