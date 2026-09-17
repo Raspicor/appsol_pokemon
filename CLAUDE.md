@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 85 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 113 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -69,6 +69,8 @@ with junctions, which need no admin rights.
 | `run/test_maclayer.py` | Contract tests for `maclayer`. |
 | `run/test_overlay.py` | Tests for the overlay's tracking logic. |
 | `run/test_macui.py` | Tests for the glyph fix and the coloured-button swap. |
+| `run/macupdate.py` | Checks GitHub Releases for a newer version. |
+| `run/test_macupdate.py` | Tests for the update check. |
 | `run/pet.pyc` | **The game.** Windows-built bytecode, run as-is. |
 | `disasm/` | CPython `dis` output. Authoritative. |
 | `src/decompiled/` | Per-function decompilation. Partially wrong — see below. |
@@ -169,6 +171,40 @@ Two things make this work, and neither is obvious:
 Without an Apple Developer certificate the app is only ad-hoc signed, so
 Gatekeeper blocks it on another Mac until the user right-click-opens it once.
 `PIKAPET_SIGN_ID=...` signs with a real identity instead.
+
+## Releasing
+
+The repo is public (`Raspicor/appsol_pokemon`), so GitHub Releases is the
+distribution channel: 2 GB per asset against a 115 MB dmg, anonymous downloads,
+and an anonymous `releases/latest` API the app itself can read.
+
+**The tag is the only place a version is written.** It used to be hardcoded in
+`make_dmg.sh`, and it drifted -- tag 0.0.2 shipped as an app that called itself
+0.0.1. `make_dmg.sh` now reads `git describe --tags --abbrev=0`, strips a
+leading `v`, and passes it to the spec as `PIKAPET_VERSION`, which lands in
+`CFBundleShortVersionString`. `macupdate.app_version()` reads it back out of the
+bundle. Tag -> dmg name -> Info.plist -> update comparison, one source.
+
+If HEAD is not exactly on a tag the build is not a release, and the dmg is named
+`PikaPet-<ver>+<sha>.dmg` so that is visible without opening anything. The
+Info.plist keeps the plain `x.y.z` -- `CFBundleShortVersionString` has to stay
+numeric.
+
+Tag on `main` only. `0.0.1` is on a develop merge and `0.0.2` is on main, which
+is why `git describe` gives a different answer depending on the branch you build
+from. After tagging main, merge it back into develop or the next feature branch
+forks from a stale base -- develop is currently behind main for exactly this
+reason.
+
+    develop -> main, git tag 0.0.3, git push --tags
+    tools/make_dmg.sh                      # reads the tag
+    upload dist/PikaPet-0.0.3.dmg to the release
+    git checkout develop && git merge main
+
+Gatekeeper is the real friction, not the download. An ad-hoc signed app needs
+the recipient to go to System Settings > Privacy & Security > "Open Anyway" --
+since macOS 15 right-click-open no longer covers it. A Developer ID plus
+notarization removes that step and nothing else does.
 
 ## Gotchas found the hard way
 

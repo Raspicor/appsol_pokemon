@@ -44,7 +44,7 @@ hiddenimports = [
     "xml.etree.ElementTree",
     # 우리 쪽 모듈. winlayer 자리에 들어가는 maclayer는 런처가 import하므로
     # 분석에 잡히지만, 명시해두는 편이 안전하다.
-    "maclayer", "overlay", "mactray", "macnotify",
+    "maclayer", "overlay", "mactray", "macnotify", "macupdate",
     # maclayer와 overlay가 쓰는 pyobjc
     "Quartz", "AppKit", "Foundation", "objc", "UserNotifications",
 ]
@@ -99,11 +99,11 @@ app = BUNDLE(
     name="PikaPet.app",
     icon=os.environ.get("PIKAPET_ICNS") or None,
     bundle_identifier="com.raspicor.pikapet",
-    version=os.environ.get("PIKAPET_VERSION", "0.0.1"),
+    version=os.environ.get("PIKAPET_VERSION", "0.0.0"),
     info_plist={
         "CFBundleName": "PikaPet",
         "CFBundleDisplayName": "PikaPet",
-        "CFBundleShortVersionString": os.environ.get("PIKAPET_VERSION", "0.0.1"),
+        "CFBundleShortVersionString": os.environ.get("PIKAPET_VERSION", "0.0.0"),
         "NSHighResolutionCapable": True,
         # LSUIElement로 두지 않는다. winlayer의 flash_taskbar가 주의를 끌 때
         # Dock 아이콘을 튀게 하는데, Dock 타일이 없으면 그게 아무 일도 하지 않는다.

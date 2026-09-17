@@ -110,6 +110,28 @@ class MenuBarItem:
 
         self.root.after(DRAIN_MS, self._drain)
 
+    def add_action(self, label, fn, index=0):
+        """메뉴에 항목을 하나 더 붙인다. **Tk 타이머 안에서 부를 것.**
+
+        업데이트 안내처럼 실행 중에야 생기는 항목을 위한 것이다. 기본값은 맨
+        위(index 0) -- 평소에 없던 항목이라 눈에 띄어야 의미가 있다.
+
+        같은 이름이 이미 있으면 아무것도 하지 않는다. 확인을 여러 번 돌려도
+        메뉴가 불어나지 않게.
+        """
+        from AppKit import NSMenuItem
+
+        if any(existing == label for existing, _ in self.actions):
+            return None
+        self.actions.append((label, fn))
+        entry = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            label, b"invoke:", "")
+        entry.setTarget_(self.target)
+        entry.setTag_(len(self.actions) - 1)
+        entry.setEnabled_(True)
+        self.menu.insertItem_atIndex_(entry, index)
+        return entry
+
     def _drain(self):
         """큐에 쌓인 메뉴 선택을 실행한다. Tk 타이머 안이라 Tcl 호출이 안전하다."""
         while self.queue:

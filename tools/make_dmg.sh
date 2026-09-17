@@ -1,8 +1,8 @@
 #!/bin/bash
 # PikaPet.app을 만들고 배포용 .dmg로 묶는다. macOS 전용.
 #
-#   tools/make_dmg.sh                  dist/PikaPet-0.0.1.dmg 를 만든다
-#   tools/make_dmg.sh --version 0.1.0  버전을 지정한다
+#   tools/make_dmg.sh                  태그에서 버전을 읽어 dist/PikaPet-<ver>.dmg
+#   tools/make_dmg.sh --version 0.1.0  버전을 직접 지정한다
 #   tools/make_dmg.sh --app-only       .app 까지만 만들고 멈춘다
 #   tools/make_dmg.sh --clean          빌드 캐시와 빌드용 venv를 먼저 지운다
 #
@@ -19,7 +19,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$ROOT/build"
 BUILD_VENV="$BUILD/venv"
 DIST="$ROOT/dist"
-VERSION="0.0.1"   # 아직 베타
+VERSION=""        # 비어 있으면 git 태그에서 읽는다 (아래)
 APP_ONLY=0
 CLEAN=0
 
@@ -39,6 +39,33 @@ die()  { printf '\n오류: %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname -s)" = "Darwin" ] || die "make_dmg.sh는 macOS 전용입니다."
 command -v hdiutil >/dev/null 2>&1 || die "hdiutil이 없습니다."
+
+# --------------------------------------------------------------------------
+# 버전: 태그가 유일한 출처
+# --------------------------------------------------------------------------
+# 예전에는 이 파일에 손으로 적혀 있었고, 그래서 태그가 0.0.2인데 빌드된 앱은
+# 0.0.1이라고 말하는 상태가 됐다. 버전이 두 군데 적혀 있으면 반드시 어긋난다.
+#
+# 태그 위에 정확히 서 있지 않으면 릴리스가 아니다. 그때는 이름에 커밋을 붙여서
+# "이건 배포본이 아니다"가 파일명만 봐도 보이게 한다. Info.plist에 들어가는
+# 값은 숫자만 남긴다 -- CFBundleShortVersionString 은 x.y.z 형태여야 한다.
+if [ -z "$VERSION" ]; then
+  if ! command -v git >/dev/null 2>&1 || ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    die "git 저장소가 아니라 태그에서 버전을 읽을 수 없습니다. --version 으로 지정하세요."
+  fi
+  VERSION="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || true)"
+  [ -n "$VERSION" ] || die "태그가 하나도 없습니다. 태그를 만들거나 --version 으로 지정하세요."
+  VERSION="${VERSION#v}"                      # v0.0.2 로 달아도 받아준다
+  if git -C "$ROOT" describe --tags --exact-match >/dev/null 2>&1; then
+    LABEL="$VERSION"
+  else
+    LABEL="$VERSION+$(git -C "$ROOT" rev-parse --short HEAD)"
+    warn "HEAD가 태그 $VERSION 위가 아닙니다. 배포본이 아닌 빌드로 표시합니다: $LABEL"
+  fi
+else
+  LABEL="$VERSION"
+fi
+echo "    버전 $VERSION (빌드 이름: $LABEL)"
 
 if [ "$CLEAN" = "1" ]; then
   say "빌드 산출물 정리"
@@ -158,7 +185,7 @@ fi
 # 스테이징 폴더에 앱과 /Applications 심볼릭 링크만 넣는다. 창 배경이나 아이콘
 # 배치를 꾸미려면 Finder를 AppleScript로 조종해야 하는데, 그건 자동화 동의
 # 프롬프트를 띄우고 멈춘다. 배포에는 이 정도가 필요하고 충분하다.
-DMG="$DIST/PikaPet-$VERSION.dmg"
+DMG="$DIST/PikaPet-$LABEL.dmg"
 STAGE="$BUILD/dmg"
 say "DMG 만들기"
 rm -rf "$STAGE" "$DMG"
@@ -167,7 +194,7 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 
 hdiutil create \
-  -volname "PikaPet $VERSION" \
+  -volname "PikaPet $LABEL" \
   -srcfolder "$STAGE" \
   -fs HFS+ \
   -format UDZO \

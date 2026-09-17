@@ -86,6 +86,8 @@ def main():
         check("run/mactray.py 존재", os.path.isfile(os.path.join(RUN, "mactray.py")),
               "없으면 몬스터볼에 들어간 펫을 꺼낼 수 없다")
         check("run/macnotify.py 존재", os.path.isfile(os.path.join(RUN, "macnotify.py")))
+        check("run/macupdate.py 존재", os.path.isfile(os.path.join(RUN, "macupdate.py")),
+              "없으면 새 버전이 나와도 알려주지 않는다")
         try:
             import UserNotifications  # noqa: F401
             check("pyobjc UserNotifications import 가능", True)
