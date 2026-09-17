@@ -746,6 +746,7 @@ def install_tray_replacement(pet):
         self._pystray = None
         self.tray_icon = MacTray(self)
         install_menu_bar(self)
+        install_update_check(self)
 
     setup_tray.__doc__ = MacTray.__doc__
     pet.PetApp.setup_tray = setup_tray
@@ -779,6 +780,49 @@ def install_menu_bar(app):
         return app._pikapet_menu_bar
     except Exception as exc:
         print(f"  메뉴 바 생성 실패: {type(exc).__name__}: {exc}", flush=True)
+        return None
+
+
+def install_update_check(app):
+    """새 버전이 나왔는지 배경에서 확인한다.
+
+    번들에서만 돈다 (소스 실행에서 '새 버전이 있어요'는 방해일 뿐이다).
+    확인은 데몬 스레드가 하고, 결과는 큐를 통해 Tk 타이머로 넘어온다 --
+    스레드에서 Tk를 건드리면 프로세스가 abort하기 때문이다.
+
+    알림 배너는 ad-hoc 서명에서 스크립트 편집기 소유가 되어 눌러도 엉뚱한 곳이
+    열린다. 그래서 안내는 알림으로 하되, **받으러 가는 길은 메뉴 바에** 둔다.
+    """
+    root = getattr(app, "root", None)
+    if root is None:
+        return None
+    try:
+        import macupdate
+
+        if not macupdate.enabled():
+            return None
+        current = macupdate.app_version()
+        if current is None:
+            print("  업데이트 확인: 번들 버전을 못 읽어 건너뜀", flush=True)
+            return None
+
+        def on_update(tag, url):
+            print(f"  새 버전 {tag} (현재 {current})", flush=True)
+            menu = getattr(app, "_pikapet_menu_bar", None)
+            if menu is not None:
+                menu.add_action(f"⬇ 새 버전 {tag} 받기",
+                                lambda: macupdate.open_releases_page(url))
+            icon = getattr(app, "tray_icon", None)
+            if icon is not None:
+                icon.notify(f"새 버전 {tag}이 나왔어요. "
+                            f"메뉴 바 ◓ 에서 받을 수 있어요.", "PikaPet")
+
+        check = macupdate.UpdateCheck(root, current, on_update)
+        check.start()
+        print(f"  업데이트 확인: {current} 기준으로 조회 중", flush=True)
+        return check
+    except Exception as exc:
+        print(f"  업데이트 확인 실패: {type(exc).__name__}: {exc}", flush=True)
         return None
 
 

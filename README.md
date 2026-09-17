@@ -221,6 +221,63 @@ macOS 창에는 애초에 타이틀바 아이콘이 없으므로(문서 창의 �
 이 호출이 창에 해주는 일은 없습니다. 그래서 원본은 그대로 부르고 직후에 앱
 아이콘만 되돌립니다.
 
+### 배포와 버전
+
+저장소가 공개라 **GitHub Releases**가 배포처입니다. 파일당 2 GB까지라 115 MB
+DMG에 여유가 있고, 받는 사람이 GitHub 계정 없이 받을 수 있고, 앱이 직접 읽을 수
+있는 `releases/latest` API를 익명으로 제공합니다.
+
+**버전은 태그 한 곳에만 적습니다.** 예전에는 `make_dmg.sh`에 손으로 적혀 있었고,
+그래서 태그가 0.0.2인데 빌드된 앱은 0.0.1이라고 말하는 상태가 됐습니다. 지금은
+`git describe --tags --abbrev=0`으로 읽어 `PIKAPET_VERSION`으로 넘기고, 그것이
+`CFBundleShortVersionString`이 되며, `macupdate.app_version()`이 번들에서 그
+값을 다시 읽습니다. 태그 → DMG 이름 → Info.plist → 업데이트 비교가 한 줄입니다.
+
+HEAD가 태그 위에 정확히 있지 않으면 릴리스가 아니므로 `PikaPet-<버전>+<sha>.dmg`
+로 이름이 붙습니다. 열어보지 않아도 배포본이 아님이 보이게. Info.plist에는
+숫자만 들어갑니다 — `CFBundleShortVersionString`은 `x.y.z` 형태여야 합니다.
+
+**태그는 `main`에만** 답니다. 지금 `0.0.1`은 develop 머지 커밋에, `0.0.2`는
+main에 붙어 있어서 어느 브랜치에서 빌드하느냐에 따라 `git describe` 답이
+달라집니다. 그리고 태그를 단 뒤에는 main을 develop으로 되돌려 받아야 합니다 —
+지금 develop이 main보다 뒤라 다음 feature 브랜치가 옛 베이스에서 갈라집니다.
+
+```
+develop -> main 머지,  git tag 0.0.3,  git push --tags
+tools/make_dmg.sh                      # 태그를 읽는다
+dist/PikaPet-0.0.3.dmg 를 릴리스에 업로드
+git checkout develop && git merge main
+```
+
+받는 쪽의 진짜 장벽은 다운로드가 아니라 **Gatekeeper**입니다. ad-hoc 서명이면
+시스템 설정 > 개인정보 보호 및 보안 > "그래도 열기"를 눌러야 하고, macOS 15부터는
+우클릭 > 열기로도 안 됩니다. Developer ID 서명 + 공증만이 이 단계를 없앱니다.
+
+### 새 버전 확인
+
+`run/macupdate.py`가 시작할 때 GitHub 릴리스 API를 한 번 읽고, 번들 버전보다
+높으면 알림을 띄우고 메뉴 바 ◓ 맨 위에 "⬇ 새 버전 받기"를 붙입니다.
+
+`--- 왜 SSE/WebSocket이 아닌가 ---`
+
+둘 다 24시간 떠 있는 서버가 전제인데 이 앱에는 그런 게 없습니다 (PvP의 `ws://`
+주소는 사용자가 직접 넣는 ngrok 주소입니다). 얻는 것은 지연 시간인데, "새 버전이
+나왔다"는 사건은 잘해야 주 1회라 그 하나를 초 단위로 받으려고 소켓을 며칠씩
+붙들고 잠자기·네트워크 전환마다 재연결하는 것은 값이 안 맞습니다. HTTPS GET
+한 번이면 서버도 토큰도 필요 없습니다.
+
+지키는 규칙 넷:
+
+- **네트워크는 데몬 스레드, Tk는 큐를 통해서.** 스레드에서 Tcl을 건드리면
+  프로세스가 abort합니다(아래 참조). overlay/mactray와 같은 방식입니다.
+  실측: 스레드가 돈 뒤에도 `after` 타이머가 168회 정상 동작.
+- **조용히 실패합니다.** 오프라인이든 API가 막혔든 릴리스가 0개(현재 상태, 404)든
+  앱은 그냥 뜹니다.
+- **소스 실행에서는 꺼집니다.** `PIKAPET_UPDATE_CHECK=1`로 켜고 `0`으로 끕니다.
+- **번들일 때만 버전을 읽습니다.** 소스에서 `NSBundle.mainBundle()`은 Homebrew의
+  `Python.app`이라 버전이 `3.14.7`로 나옵니다. 실측으로 확인했고, 그걸 앱 버전으로
+  쓰면 비교가 통째로 엉뚱해집니다.
+
 ### 배포용 DMG 만들기
 
 ```bash
@@ -261,7 +318,7 @@ Apple Developer 인증서가 없으면 ad-hoc 서명만 붙으므로, 다른 맥
 cd ~/projects/pikapet && .venv/bin/python -m unittest discover -s run -v
 ```
 
-85개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
+113개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
 - `flash_taskbar`의 세 번째 인자는 `timeout`이 아니라 `interval_ms`였고,
   `acquire_single_instance_lock`엔 기본 mutex 이름 `PikaPetSingleInstanceMutex_do_bro2`가
   있었습니다 (원본 `winlayer.pyc`와 시그니처를 대조하는 테스트가 잡아냄)
@@ -325,6 +382,8 @@ run/                 macOS 실행 환경
   test_maclayer.py     계약 테스트 34개
   test_overlay.py      오버레이 추적 로직 테스트 17개
   test_macui.py        글리프 보정 / 색 버튼 / 앱 아이콘 테스트 27개
+  macupdate.py         새 버전 확인 (GitHub Releases)
+  test_macupdate.py    업데이트 확인 테스트 28개
   mactray.py           트레이 전용 기능을 되살린 메뉴 바 항목
   macnotify.py         알림 (UN 우선, osascript 폴백)
   pet.pyc / winlayer.pyc / spriteanim.pyc
