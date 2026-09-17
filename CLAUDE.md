@@ -16,39 +16,59 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ## Commands
 
 ```bash
+./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
-python -m unittest discover -s run -v                 # 34 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 34 tests, all should pass
+.venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
 
-Tests and the app need the venv's interpreter, not the system one:
-`/tmp/pikaenv/bin/python -m unittest discover -s run`.
+Tests and the app need the venv's interpreter, not the system one.
 
 ### Environment
 
+`./install.sh` does all of this and is safe to re-run; the manual equivalent is:
+
 ```bash
 brew install python@3.14 python-tk@3.14
-python3.14 -m venv /tmp/pikaenv
-/tmp/pikaenv/bin/pip install -r requirements.txt
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
 `python-tk@3.14` is not optional — Homebrew's python@3.14 ships without
-`_tkinter` and the app is pure tkinter.
+`_tkinter` and the app is pure tkinter. Python 3.14 itself is not optional
+either: `pet.pyc` is 3.14 bytecode and fails to import on anything else.
 
-**The venv lives in `/tmp` and will not survive a reboot.** If `run/pikapet.sh`
-suddenly fails, recreate it with the commands above. Moving it somewhere durable
-is a reasonable change to make.
+The venv now lives in `.venv` inside the repo (gitignored) so it survives a
+reboot. `run/pikapet.sh` prefers it, still honours `PIKAPET_VENV`, and falls
+back to the old `/tmp/pikaenv` if that is the only one present.
+
+### Windows
+
+The port is macOS-only, but the repo runs on Windows too — natively, since
+`pet.pyc` is a Windows build. `install.ps1` sets it up and `run/pikapet.bat`
+launches `pet.pyc` directly; none of the macOS patches are involved and
+`winlayer.pyc` is used as-is (it needs nothing beyond `ctypes`).
+
+The one thing that breaks there: `run/assets`, `run/assets_v3`, `run/assets_v4`
+and `run/badges_trainer` are committed as symlinks, and git on Windows writes
+them out as text files unless `core.symlinks` is on. `pet.pyc` resolves assets
+from its own directory, so the pet renders empty. `install.ps1` replaces them
+with junctions, which need no admin rights.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `run/pikapet_mac.py` | The launcher. All four runtime patches live here. |
+| `run/pikapet_mac.py` | The macOS launcher. All five runtime patches live here. |
+| `run/pikapet.bat` | The Windows launcher: runs `pet.pyc` directly. |
 | `run/maclayer.py` | macOS implementation of the app's `winlayer` API. |
 | `run/test_maclayer.py` | Contract tests for `maclayer`. |
 | `run/pet.pyc` | **The game.** Windows-built bytecode, run as-is. |
 | `disasm/` | CPython `dis` output. Authoritative. |
 | `src/decompiled/` | Per-function decompilation. Partially wrong — see below. |
+| `install.sh` / `install.ps1` | Setup for macOS / Windows. |
+| `tools/doctor.py` | Environment check both installers end with. |
 | `tools/` | Unpackers, and a pycdc patched for Python 3.14. |
 | `README.md` | Full analysis: how the app works, what was found, why. |
 

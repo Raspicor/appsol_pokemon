@@ -136,18 +136,51 @@ cd ~/projects/pikapet && /tmp/pikaenv/bin/python -m unittest discover -s run -v
 - Dock 탐지가 `screens()[0]`만 보느라, **Dock이 두 번째 화면에 있는** 이 장비 구성에서
   `None`을 반환했습니다
 
-## 4. 실행 방법
+## 4. 설치와 실행
+
+설치 스크립트가 파이썬·의존성·에셋 링크를 모두 처리합니다. 다시 실행해도 안전합니다.
+
+**macOS**
 
 ```bash
-brew install python@3.14 python-tk@3.14
-python3.14 -m venv /tmp/pikaenv
-/tmp/pikaenv/bin/pip install pillow numpy pystray websockets werkzeug \
-    watchdog six colorama packaging threadpoolctl typing_extensions \
-    charset_normalizer markupsafe
-~/projects/pikapet/run/pikapet.sh
+./install.sh          # Homebrew 의존성 + .venv + 검증
+./run/pikapet.sh
 ```
 
-펫을 **우클릭**하면 전체 메뉴가 나옵니다. 다른 venv를 쓰려면 `PIKAPET_VENV`로 지정하세요.
+**Windows**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+run\pikapet.bat       # 콘솔 없이 실행, --debug 를 붙이면 콘솔 유지
+```
+
+펫을 **우클릭**하면 전체 메뉴가 나옵니다.
+
+venv는 리포지터리 안 `.venv`에 만들어지고(재부팅에도 유지됨), `PIKAPET_VENV`로 다른
+위치를 지정할 수 있습니다. 환경이 이상하면 진단부터 돌려보세요:
+
+```bash
+.venv/bin/python tools/doctor.py            # Windows: .venv\Scripts\python.exe tools\doctor.py
+```
+
+### 플랫폼별로 다른 점
+
+`pet.pyc`는 **Python 3.14 바이트코드**라 버전이 협상 대상이 아닙니다. 다른 버전에서는
+import 단계에서 실패하므로 두 설치 스크립트 모두 이걸 먼저 확인합니다.
+
+| | macOS | Windows |
+|---|---|---|
+| 진입점 | `run/pikapet_mac.py` (패치 5종 적용 후 `pet.pyc` 로드) | `run/pet.pyc` 직접 실행 |
+| 플랫폼 계층 | `run/maclayer.py` | `run/winlayer.pyc` (원본, `ctypes`만 사용) |
+| tkinter | `python-tk@3.14` 별도 설치 필요 | python.org 설치본에 포함 |
+| 추가 의존성 | pyobjc (requirements.txt에 마커로 분리) | 없음 |
+
+Windows에서 특히 주의할 점은 **에셋 링크**입니다. `run/assets`, `run/assets_v3`,
+`run/assets_v4`, `run/badges_trainer`는 git 심링크로 커밋돼 있는데, Windows 기본값인
+`core.symlinks=false`에서는 `../assets` 같은 경로가 담긴 **텍스트 파일**로 체크아웃됩니다.
+`pet.pyc`는 에셋을 자기 디렉터리 기준으로 찾으므로 이 상태면 스프라이트가 하나도 안 보입니다.
+`install.ps1`이 이걸 감지해서 **junction**으로 바꿔줍니다(디렉터리 심링크와 달리 관리자
+권한이나 개발자 모드가 필요 없습니다).
 
 ## 5. 디렉터리 구성
 
