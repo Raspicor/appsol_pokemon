@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 51 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 85 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -68,12 +68,14 @@ with junctions, which need no admin rights.
 | `run/mactray.py` | Menu bar item carrying the three tray-only actions. |
 | `run/test_maclayer.py` | Contract tests for `maclayer`. |
 | `run/test_overlay.py` | Tests for the overlay's tracking logic. |
+| `run/test_macui.py` | Tests for the glyph fix and the coloured-button swap. |
 | `run/pet.pyc` | **The game.** Windows-built bytecode, run as-is. |
 | `disasm/` | CPython `dis` output. Authoritative. |
 | `src/decompiled/` | Per-function decompilation. Partially wrong — see below. |
 | `install.sh` / `install.ps1` | Setup for macOS / Windows. |
 | `tools/doctor.py` | Environment check both installers end with. |
 | `tools/make_dmg.sh` | Builds PikaPet.app and wraps it in a .dmg. |
+| `tools/make_icon.py` | Builds the app icon from `tools/icon.png`. |
 | `tools/pikapet.spec` | The PyInstaller spec that script drives. |
 | `tools/` | Unpackers, and a pycdc patched for Python 3.14. |
 | `README.md` | Full analysis: how the app works, what was found, why. |
@@ -170,6 +172,66 @@ Gatekeeper blocks it on another Mac until the user right-click-opens it once.
 
 ## Gotchas found the hard way
 
+- **Tk aqua does not restore a window's decorations.** Turning
+  `overrideredirect` back off flips Tk's own flag but leaves the NSWindow's
+  styleMask alone (78 -> 14, titled bit never returns), and a
+  withdraw/deiconify remap does not help either. The window then has no title
+  bar *and* none of the drag bindings the game puts on its own compact
+  windows, so it cannot be moved at all -- which is what the Rocket raid's
+  "화면 키우기" produces. `install_titlebar_restore()` sets the styleMask
+  directly after the fact.
+- **U+2694 (⚔) is unusable in Tk text on macOS.** The system font has no real
+  text glyph for it and Tk does not draw a tofu box -- it falls back to a
+  hairline glyph, so at the 9px the game uses, `⚔ Fight` reads as `× Fight`.
+  Appending VS16 (U+FE0F) switches it to emoji presentation and Apple Color
+  Emoji picks it up. Only ⚔ needs this: all 134 symbols in the game's strings
+  were rendered at 9px bold and their ink counted, and it is the only one that
+  breaks. Don't "fix" ▶ ↩ ⚙ ⬇ -- they render fine in monochrome, and
+  emoji-fying them changes the game's look rather than repairing it. The hook
+  goes on `tkinter.Misc._options`, the single choke point every widget option
+  passes through (`Widget.__init__`, `Misc.configure`, `Menu.add`,
+  `Canvas._create`).
+- **aqua's `tk.Button` throws `-background` away.** No combination of `bd=0`,
+  `relief=flat` or `highlightthickness=0` brings it back;
+  `highlightbackground` only rings the button. Just 8 of the game's 181
+  buttons set a colour, 7 of them the same `#ffd54a` action yellow, so only
+  those are swapped for `MacColorButton` (a `tk.Label` that does paint its
+  background) and the other 173 stay native. This is safe because the game
+  never uses `isinstance` or `winfo_class` on widgets. Keep the replacement's
+  padding at `padx=17, pady=5`: that is measured to make its requested size
+  match a native button exactly, and without it the coloured buttons come out
+  14x2 px smaller than the native ones beside them.
+- **`wm iconphoto` sets the *application* icon on aqua, `-default` or not.**
+  The game calls `win.iconphoto(True, <pet sprite>)` at startup
+  (`_setup_taskbar_icon`, pet.py:17476) -- on Windows that is the window's
+  taskbar icon, here it replaces the Dock icon, so PikaPet shows up as
+  Charmander instead of the Poké Ball. Dropping the `default` argument does
+  not help: measured, `iconphoto(False, <32px>)` still takes the app icon down
+  to 32x32. macOS windows have no title-bar icon to set in the first place, so
+  the launcher lets the call through and re-asserts the app icon right after.
+- **The sprite overlay must sit below the menu bar.** The menu bar composites at
+  window layer 24, so an overlay at `NSStatusWindowLevel` (25) draws *over* it:
+  the pet covers the menu bar as it walks up, and because the overlay is
+  repositioned every 16 ms the window server recomposites that strip constantly
+  and it visibly tears. `NSMainMenuWindowLevel - 1` (23) keeps the pet behind
+  the menu bar -- which is what the plain Tk window used to do -- while staying
+  above the pet's own Tk window (layer 19) so the overlay still gets the clicks.
+- **Notifications need a real signature to belong to the app.** macOS gives an
+  ad-hoc signed bundle no notification permission at all -- no prompt, no entry
+  in Notification settings, just `UNErrorDomain Code=1 "Notifications are not
+  allowed for this application"`, from `dist/` and from `~/Applications` alike.
+  So the shipped build always falls back to osascript, whose banners belong to
+  Script Editor. `run/macnotify.py` already implements the modern
+  `UNUserNotificationCenter` path and a click delegate; signing with
+  `PIKAPET_SIGN_ID=...` is all it takes to switch over.
+- **`NSUserNotificationCenter` is a black hole on macOS 26.** It accepts a
+  notification, adds it to `deliveredNotifications()` and shows no banner --
+  without raising. Anything that treats "no exception" as success will silently
+  drop every notification, which is exactly what happened here. `osascript -e
+  'display notification'` does show a banner; the cost is that the banner is
+  owned by Script Editor, so clicking it opens Script Editor rather than the
+  pet. The ◓ menu bar item is what makes the notification's own advice
+  ("click the tray icon") followable.
 - **Never call Tcl from an AppKit callback.** Tk's mainloop pumps the macOS run
   loop, so an NSView mouse handler or an NSTimer target runs *inside*
   `Tcl_DoOneEvent`. Calling `event_generate` (or anything else Tcl) from there
