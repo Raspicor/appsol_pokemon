@@ -1,0 +1,183 @@
+{
+  "region": "Sinnoh",
+  "version_used": "Platinum",
+  "note_kr": "포켓몬 배틀 팀과 뱃지 순서는 플래티넘 기준입니다 (다이아몬드/펄에서는 판테라(멜리사)와 자두/맥실러 순서가 다릅니다: 3번=자두, 4번=맥실러, 5번=멜리사).",
+  "gyms": [
+    {
+      "order": 1,
+      "leader_en": "Roark",
+      "leader_kr": "강석",
+      "city_kr": "무쇠시티",
+      "badge_en": "Coal Badge",
+      "badge_kr": "콜배지",
+      "type": "rock",
+      "team": [
+        {"species_en": "geodude", "level": 12},
+        {"species_en": "onix", "level": 12},
+        {"species_en": "cranidos", "level": 14}
+      ]
+    },
+    {
+      "order": 2,
+      "leader_en": "Gardenia",
+      "leader_kr": "유채",
+      "city_kr": "영원시티",
+      "badge_en": "Forest Badge",
+      "badge_kr": "포리스트배지",
+      "type": "grass",
+      "team": [
+        {"species_en": "turtwig", "level": 20},
+        {"species_en": "cherrim", "level": 20},
+        {"species_en": "roserade", "level": 22}
+      ]
+    },
+    {
+      "order": 3,
+      "leader_en": "Fantina",
+      "leader_kr": "멜리사",
+      "city_kr": "연고시티",
+      "badge_en": "Relic Badge",
+      "badge_kr": "레릭배지",
+      "type": "ghost",
+      "note": "플래티넘에서는 3번째 뱃지, 다이아몬드/펄에서는 5번째 뱃지입니다.",
+      "team": [
+        {"species_en": "duskull", "level": 24},
+        {"species_en": "haunter", "level": 24},
+        {"species_en": "mismagius", "level": 26}
+      ]
+    },
+    {
+      "order": 4,
+      "leader_en": "Maylene",
+      "leader_kr": "자두",
+      "city_kr": "장막시티",
+      "badge_en": "Cobble Badge",
+      "badge_kr": "코블배지",
+      "type": "fighting",
+      "team": [
+        {"species_en": "meditite", "level": 28},
+        {"species_en": "machoke", "level": 29},
+        {"species_en": "lucario", "level": 32}
+      ]
+    },
+    {
+      "order": 5,
+      "leader_en": "Crasher Wake",
+      "leader_kr": "맥실러",
+      "city_kr": "들판시티",
+      "badge_en": "Fen Badge",
+      "badge_kr": "펜배지",
+      "type": "water",
+      "team": [
+        {"species_en": "gyarados", "level": 33},
+        {"species_en": "quagsire", "level": 34},
+        {"species_en": "floatzel", "level": 37}
+      ]
+    },
+    {
+      "order": 6,
+      "leader_en": "Byron",
+      "leader_kr": "동관",
+      "city_kr": "운하시티",
+      "badge_en": "Mine Badge",
+      "badge_kr": "마인배지",
+      "type": "steel",
+      "team": [
+        {"species_en": "magneton", "level": 37},
+        {"species_en": "steelix", "level": 38},
+        {"species_en": "bastiodon", "level": 41}
+      ]
+    },
+    {
+      "order": 7,
+      "leader_en": "Candice",
+      "leader_kr": "무청",
+      "city_kr": "선단시티",
+      "badge_en": "Icicle Badge",
+      "badge_kr": "글레이셔배지",
+      "type": "ice",
+      "team": [
+        {"species_en": "sneasel", "level": 40},
+        {"species_en": "piloswine", "level": 40},
+        {"species_en": "abomasnow", "level": 42},
+        {"species_en": "froslass", "level": 44}
+      ]
+    },
+    {
+      "order": 8,
+      "leader_en": "Volkner",
+      "leader_kr": "전진",
+      "city_kr": "물가시티",
+      "badge_en": "Beacon Badge",
+      "badge_kr": "비컨배지",
+      "type": "electric",
+      "team": [
+        {"species_en": "jolteon", "level": 46},
+        {"species_en": "raichu", "level": 46},
+        {"species_en": "luxray", "level": 48},
+        {"species_en": "electivire", "level": 50}
+      ]
+    }
+  ],
+  "elite_four": [
+    {
+      "order": 1,
+      "name_en": "Aaron",
+      "type": "bug",
+      "team": [
+        {"species_en": "yanmega", "level": 49},
+        {"species_en": "scizor", "level": 49},
+        {"species_en": "vespiquen", "level": 50},
+        {"species_en": "heracross", "level": 51},
+        {"species_en": "drapion", "level": 53}
+      ]
+    },
+    {
+      "order": 2,
+      "name_en": "Bertha",
+      "type": "ground",
+      "team": [
+        {"species_en": "whiscash", "level": 50},
+        {"species_en": "gliscor", "level": 53},
+        {"species_en": "hippowdon", "level": 52},
+        {"species_en": "golem", "level": 52},
+        {"species_en": "rhyperior", "level": 55}
+      ]
+    },
+    {
+      "order": 3,
+      "name_en": "Flint",
+      "type": "fire",
+      "team": [
+        {"species_en": "houndoom", "level": 52},
+        {"species_en": "flareon", "level": 55},
+        {"species_en": "rapidash", "level": 53},
+        {"species_en": "infernape", "level": 55},
+        {"species_en": "magmortar", "level": 57}
+      ]
+    },
+    {
+      "order": 4,
+      "name_en": "Lucian",
+      "type": "psychic",
+      "team": [
+        {"species_en": "mr-mime", "level": 53},
+        {"species_en": "espeon", "level": 55},
+        {"species_en": "bronzong", "level": 54},
+        {"species_en": "alakazam", "level": 56},
+        {"species_en": "gallade", "level": 59}
+      ]
+    }
+  ],
+  "champion": {
+    "name_en": "Cynthia",
+    "team": [
+      {"species_en": "spiritomb", "level": 58},
+      {"species_en": "roserade", "level": 58},
+      {"species_en": "togekiss", "level": 60},
+      {"species_en": "lucario", "level": 60},
+      {"species_en": "milotic", "level": 58},
+      {"species_en": "garchomp", "level": 62}
+    ]
+  }
+}

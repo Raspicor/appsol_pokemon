@@ -1,0 +1,4 @@
+SteGriff/pokemon-badges (https://github.com/SteGriff/pokemon-badges)
+Author: Stephen Griffiths, 2011
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+-> 사용 시 위 출처만 표기하면 자유롭게 쓸 수 있는 라이선스예요 (원작자 표기 필수).
