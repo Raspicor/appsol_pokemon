@@ -68,7 +68,7 @@ get_desktop_icon_positions(max) -> [(x,y)]   # 바탕화면 아이콘 위 착지
 - **우클릭 메뉴** — Tk 9는 맥에서도 우클릭이 `<Button-3>`이라(`tk.tcl`이 `<<ContextMenu>>`를
   플랫폼 구분 없이 Button-3에 매핑) 기존 바인딩이 그대로 먹습니다
 
-### 고친 것 네 가지
+### 고친 것 다섯 가지
 
 `run/pikapet_mac.py`가 원본 바이트코드를 로드한 뒤 런타임에 패치합니다.
 **`pet.pyc`는 건드리지 않습니다** — 디컴파일 품질과 무관하게 동작하고, 원본과 어긋날 일도 없습니다.
@@ -77,8 +77,31 @@ get_desktop_icon_positions(max) -> [(x,y)]   # 바탕화면 아이콘 위 착지
 |---|---|---|
 | 1 | `winlayer`가 Win32 전용 | `sys.modules["winlayer"] = maclayer` — Quartz/AppKit 구현으로 교체 |
 | 2 | `-transparentcolor`는 Windows 전용 | Tk 레벨에서 맥의 `-transparent`로 번역 |
-| 3 | `MAGIC = '#ff00ff'` 컬러키 | `systemTransparent`로 교체 (지원 여부 실측 후에만) |
-| 4 | pystray가 프로세스를 죽임 | `setup_tray`를 `MacTray` 스텁으로 교체 |
+| 3 | `MAGIC = '#ff00ff'` 컬러키 | 폴백 경로에서만 `systemTransparent`로 교체 |
+| 4 | pystray가 프로세스를 죽임 | `setup_tray`를 `MacTray` + 메뉴 바 항목으로 교체 |
+| 5 | 스프라이트가 마젠타 판 위에 그려짐 | 판을 진짜 알파로 바꾸고 `run/overlay.py`가 네이티브로 그림 |
+
+**트레이에만 있던 기능 셋**은 `run/mactray.py`가 메뉴 바(◓) 항목으로 되살립니다 —
+`exit_ball`(몬스터볼에서 꺼내기), `_open_pending_encounter`(야생 포켓몬 조우),
+`_restore_battle_window`(배틀 창 복구). 우클릭 메뉴에는 없는 것들입니다. 특히
+`exit_ball`이 없으면 펫이 볼에 들어간 순간 창이 숨어서 우클릭할 대상이 사라지고
+두 번 다시 꺼낼 수 없습니다. pystray를 되살리는 대신 NSStatusItem을 Tk의 메인
+스레드에서 직접 만들기 때문에 별도 run loop가 필요 없습니다.
+
+**투명 배경은 Tk로는 불가능합니다.** Tk 9는 toplevel을 **알파 채널이 없는** 백킹 스토어에
+렌더링합니다 — 콘텐트 뷰의 레이어가 `isOpaque = NO`이고 NSWindow가 이미 non-opaque에
+clearColor인데도 `kCGImageAlphaNoneSkipLast` CGImage를 돌려줍니다. 그래서 `-transparent`,
+`systemTransparent`, `NSWindow.setOpaque_(False)` 무엇을 해도 Tk가 그린 것은 꽉 찬
+사각형으로 합성됩니다 (Tk 9.0.4 / macOS 26 실측. Tk 8.6.18은 반대로 창을 통째로 뚫어버립니다).
+
+그래서 Tk의 렌더러와 싸우는 대신 빼버립니다. 컬러키를 요청한 창마다 그 위에 테두리 없는
+NSWindow를 얹어 스프라이트를 **진짜 per-pixel 알파로** 그리고, Tk 창은 자리·드래그·우클릭
+메뉴를 계속 맡은 채 보이지 않을 만큼 낮은 알파로 남습니다. 0이 아니라 0.004인 이유는
+AppKit이 알파 0인 창을 클릭 히트테스트에서 건너뛰기 때문입니다.
+
+오버레이가 실제로 무언가를 그리기 시작한 뒤에야 Tk 창을 투명하게 만들기 때문에,
+판단이 틀린 창의 최악의 결과는 **예전 동작**이지 펫이 사라지는 것이 아닙니다.
+`PIKAPET_OVERLAY=0`으로 예전 동작을 강제할 수 있습니다.
 
 **2번이 왜 예외 처리만으로 부족한가**: `Companion.__init__`에서 라벨 생성이
 `-transparentcolor` 호출과 **같은 try 블록 안**에 있습니다. 예외가 나면 동료 포켓몬 창에
@@ -123,13 +146,54 @@ dock (taskbar) : (1920, 991, 3840, 1080)     # Dock이 두 번째 화면에 있�
 ledges         : 9개 (다른 앱 창 윗변)
 ```
 
+### AppKit 콜백에서 Tcl을 부르면 안 되는 이유
+
+Tk의 mainloop가 macOS 런루프를 돌리기 때문에, NSView의 마우스 핸들러나 NSTimer
+타깃은 **`Tcl_DoOneEvent` 안에서** 실행됩니다. 그 자리에서 `event_generate` 같은
+Tcl 호출을 하면 Python thread state가 떨어져 나가고, 다음 `after` 타이머가
+
+    Fatal Python error: PyEval_RestoreThread: ... the current Python thread state is NULL
+
+로 프로세스를 abort시킵니다. 드문 경합이 아니라 몇 초 안에 재현됩니다 — 격리
+실험 2/2 사망, 실제 앱 2/2 사망. 그래서 `overlay.py`의 마우스 핸들러는 deque에만
+넣고, 이미 Tcl 컨텍스트인 `_Manager.tick`(16 ms)이 꺼내서 실제 Tk 이벤트를
+만듭니다.
+
+### 배포용 DMG 만들기
+
+```bash
+tools/make_dmg.sh                  # dist/PikaPet-0.0.1.dmg (아직 베타)
+tools/make_dmg.sh --version 0.1.0  # 버전 지정
+tools/make_dmg.sh --app-only       # .app 까지만
+```
+
+Python 3.14와 Tcl/Tk, 에셋 123 MB까지 전부 품은 `PikaPet.app`(173 MB)을 만들어
+압축 디스크 이미지(114 MB)로 묶습니다. 받는 쪽에 아무것도 설치돼 있지 않아도
+됩니다. 빌드용 venv를 `build/` 에 따로 만들어 쓰므로 실행용 `.venv` 는 건드리지
+않습니다.
+
+**PyInstaller가 이 앱의 원래 포장 방식입니다.** `PikaPet.exe`가 PyInstaller
+onefile 번들이었고, 그 분기가 바이트코드에 아직 살아 있습니다 — `sys.frozen`이
+켜지면 pet.pyc가 에셋을 `sys._MEIPASS`에서 읽고 세이브를 `$APPDATA/PikaPet`에
+씁니다(pet.py:33~50). 덕분에 소스 실행에서 `run/pet_state.json`에 중복 저장되던
+것도 번들에서는 일어나지 않습니다.
+
+**`pet.pyc`는 데이터 파일이라 PyInstaller가 그 안의 import를 못 봅니다.**
+`tools/pikapet.spec`의 `hiddenimports`가 그 목록을 손으로 들고 있고,
+`disasm/pet.dis.txt`의 `IMPORT_NAME` 전부에서 뽑은 것입니다. 게임에 import가
+늘어나면 여기에 추가해야 하며, 빠지면 빌드가 아니라 실행 시점에 터집니다.
+
+Apple Developer 인증서가 없으면 ad-hoc 서명만 붙으므로, 다른 맥에서 처음 열 때
+**우클릭 > 열기**가 필요합니다. 인증서가 있으면
+`PIKAPET_SIGN_ID="Developer ID Application: ..." tools/make_dmg.sh` 로 서명합니다.
+
 ### 테스트
 
 ```bash
-cd ~/projects/pikapet && /tmp/pikaenv/bin/python -m unittest discover -s run -v
+cd ~/projects/pikapet && .venv/bin/python -m unittest discover -s run -v
 ```
 
-34개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
+51개 전부 통과합니다. 실제로 두 건의 버그를 잡았습니다:
 - `flash_taskbar`의 세 번째 인자는 `timeout`이 아니라 `interval_ms`였고,
   `acquire_single_instance_lock`엔 기본 mutex 이름 `PikaPetSingleInstanceMutex_do_bro2`가
   있었습니다 (원본 `winlayer.pyc`와 시그니처를 대조하는 테스트가 잡아냄)
@@ -187,9 +251,11 @@ Windows에서 특히 주의할 점은 **에셋 링크**입니다. `run/assets`, 
 ```
 run/                 macOS 실행 환경
   pikapet.sh           실행 스크립트
-  pikapet_mac.py       런처 — 원본 바이트코드에 런타임 패치 4종 적용
+  pikapet_mac.py       런처 — 원본 바이트코드에 런타임 패치 5종 적용
+  overlay.py           스프라이트를 그리는 네이티브 AppKit 창
   maclayer.py          winlayer의 macOS 구현 (Quartz/AppKit)
   test_maclayer.py     계약 테스트 34개
+  test_overlay.py      오버레이 추적 로직 테스트 17개
   pet.pyc / winlayer.pyc / spriteanim.pyc
 bytecode/            원본 바이트코드
 src/decompiled/      함수/메서드별 디컴파일 903개 + _INDEX.txt
@@ -226,9 +292,6 @@ pycdc(Decompyle++)는 Python 3.13까지만 지원해서 3.14 지원을 직접 �
 
 포팅은 끝났지만 직접 눈으로 확인해볼 것들:
 
-- **투명 배경** — `-transparent`가 켜진 건 확인했지만, 스프라이트 주변이 실제로 깨끗하게
-  비치는지는 화면으로 봐야 합니다. 어색하면 `PetApp.build_menu`의 `🔆 창 투명도 복구`를
-  눌러보세요.
 - **알림 센터** — `MacTray.notify()`는 `osascript`로 알림을 띄웁니다. 시스템 설정에서
   알림 권한을 한 번 허용해야 보입니다.
 - **미확인 영역** — 전투 창, PvP(websockets), 미니게임, 오목은 아직 실행해보지 않았습니다.

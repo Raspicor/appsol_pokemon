@@ -6,3 +6,8 @@ __pycache__/
 
 # installer output
 .venv/
+
+# 빌드 산출물
+build/
+dist/
+.DS_Store

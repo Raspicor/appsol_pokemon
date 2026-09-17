@@ -1,16 +1,21 @@
-<#
+﻿<#
 .SYNOPSIS
-    Set up PikaPet on Windows.
+    Windows에서 PikaPet 환경을 준비한다.
 
 .DESCRIPTION
-    Builds a Python 3.14 virtualenv, installs requirements.txt, repairs the
-    run\assets links that git mangles on Windows, then runs tools\doctor.py.
-    Safe to re-run.
+    Python 3.14 virtualenv를 만들고, requirements.txt를 설치하고, Windows에서
+    git이 망가뜨리는 run\assets 링크를 고친 뒤 tools\doctor.py를 돌린다.
+    여러 번 실행해도 안전하다.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File install.ps1
     powershell -ExecutionPolicy Bypass -File install.ps1 -Force
     powershell -ExecutionPolicy Bypass -File install.ps1 -Venv D:\envs\pikapet
+
+.NOTES
+    이 파일은 한글 주석이 있으므로 UTF-8 BOM으로 저장해야 한다. PowerShell 5.1은
+    BOM이 없는 .ps1을 ANSI로 읽어서 한글이 깨지고, 따옴표 안의 글자가 깨지면
+    파싱까지 어긋난다.
 #>
 [CmdletBinding()]
 param(
@@ -20,9 +25,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# PowerShell 7.3+ turns anything a native command writes to stderr into a
-# terminating error while ErrorActionPreference is Stop. pip and python both
-# use stderr for ordinary notices, so opt out and check $LASTEXITCODE instead.
+# PowerShell 7.3 이상은 ErrorActionPreference가 Stop인 동안, 네이티브 명령이
+# stderr에 쓴 것을 전부 종료 오류로 승격시킨다. pip와 python은 평범한 안내에도
+# stderr를 쓰므로 이 동작을 끄고 $LASTEXITCODE를 직접 본다.
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
     $PSNativeCommandUseErrorActionPreference = $false
 }
@@ -32,23 +37,24 @@ if (-not $Venv) { $Venv = Join-Path $Root '.venv' }
 
 function Say  ($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Warn ($m) { Write-Host "    !! $m" -ForegroundColor Yellow }
-function Die  ($m) { Write-Host "`nERROR: $m" -ForegroundColor Red; exit 1 }
+function Die  ($m) { Write-Host "`n오류: $m" -ForegroundColor Red; exit 1 }
 
+# $IsWindows는 PowerShell 6+에만 있으므로 5.1을 위해 $env:OS도 같이 본다.
 if (-not $IsWindows -and $env:OS -ne 'Windows_NT') {
-    Die 'install.ps1 is for Windows. On macOS use ./install.sh.'
+    Die 'install.ps1은 Windows용입니다. macOS에서는 ./install.sh를 쓰세요.'
 }
 
 # ---------------------------------------------------------------------------
 # 1. Python 3.14
 # ---------------------------------------------------------------------------
-# pet.pyc is 3.14 bytecode -- a different version fails at import, so this is a
-# hard requirement, not a preference. The python.org installer bundles tkinter,
-# so unlike macOS there is nothing extra to install for the GUI.
-Say 'Looking for Python 3.14'
+# pet.pyc는 3.14 바이트코드다. 다른 버전에서는 import 시점에 실패하므로 이건
+# 취향이 아니라 강제 조건이다. python.org 설치본은 tkinter를 포함하므로 macOS와
+# 달리 GUI를 위해 따로 설치할 것이 없다.
+Say 'Python 3.14 찾는 중'
 $PyExe = $null
 $PyArgs = @()
 
-# `py -3.14` is the reliable route when several versions are installed.
+# 여러 버전이 깔려 있을 때 `py -3.14`가 가장 확실한 경로다.
 $launcher = Get-Command py -ErrorAction SilentlyContinue
 if ($launcher) {
     try {
@@ -69,11 +75,12 @@ if (-not $PyExe) {
 }
 if (-not $PyExe) {
     Die @'
-Python 3.14 not found.
+Python 3.14를 찾을 수 없습니다.
 
-  pet.pyc is Python 3.14 bytecode and will not load on any other version.
-  Install it from https://www.python.org/downloads/ (tick "Add python.exe to
-  PATH" and keep the default "tcl/tk and IDLE" component), then re-run.
+  pet.pyc는 Python 3.14 바이트코드이고 다른 버전에서는 로드되지 않습니다.
+  https://www.python.org/downloads/ 에서 설치하세요. 설치 시 "Add python.exe to
+  PATH"를 켜고 기본 구성요소인 "tcl/tk and IDLE"을 그대로 두어야 합니다.
+  설치한 뒤 다시 실행하세요.
 '@
 }
 $shown = if ($PyArgs) { "$PyExe $PyArgs" } else { $PyExe }
@@ -82,83 +89,83 @@ Write-Host "    $shown ($(& $PyExe @PyArgs -V))"
 & $PyExe @PyArgs -c 'import tkinter' 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Die @'
-This Python 3.14 has no tkinter.
+이 Python 3.14에는 tkinter가 없습니다.
 
-  Re-run the python.org installer, choose "Modify", and enable the
-  "tcl/tk and IDLE" option. The whole app is tkinter.
+  python.org 설치 프로그램을 다시 실행해 "Modify"를 고르고
+  "tcl/tk and IDLE" 옵션을 켜세요. 이 앱은 전부 tkinter입니다.
 '@
 }
-Write-Host "    tkinter ok"
+Write-Host "    tkinter 정상"
 
 # ---------------------------------------------------------------------------
-# 2. the virtualenv
+# 2. virtualenv
 # ---------------------------------------------------------------------------
 if ($Force -and (Test-Path $Venv)) {
-    Say "Removing existing venv at $Venv"
+    Say "기존 venv 삭제: $Venv"
     Remove-Item -Recurse -Force $Venv
 }
 if (Test-Path $Venv) {
-    Say "Reusing venv at $Venv"
+    Say "기존 venv 재사용: $Venv"
 } else {
-    Say "Creating venv at $Venv"
+    Say "venv 생성: $Venv"
     & $PyExe @PyArgs -m venv $Venv
-    if ($LASTEXITCODE -ne 0) { Die 'venv creation failed' }
+    if ($LASTEXITCODE -ne 0) { Die 'venv 생성 실패' }
 }
 
 $VPy = Join-Path $Venv 'Scripts\python.exe'
-if (-not (Test-Path $VPy)) { Die "venv looks broken: $VPy not found" }
+if (-not (Test-Path $VPy)) { Die "venv가 깨진 것 같습니다: $VPy 없음" }
 
-Say 'Installing requirements'
+Say 'requirements 설치'
 & $VPy -m pip install --quiet --upgrade pip
 & $VPy -m pip install --quiet -r (Join-Path $Root 'requirements.txt')
-if ($LASTEXITCODE -ne 0) { Die 'pip install failed' }
+if ($LASTEXITCODE -ne 0) { Die 'pip install 실패' }
 
 # ---------------------------------------------------------------------------
-# 3. asset links -- the one thing that always breaks on Windows
+# 3. 에셋 링크 -- Windows에서 언제나 깨지는 그 하나
 # ---------------------------------------------------------------------------
-# run\assets, run\assets_v3, run\assets_v4 and run\badges_trainer are committed
-# as git symlinks. With the default core.symlinks=false, git writes each one out
-# as a small TEXT FILE containing "../assets", and the game -- which resolves
-# assets relative to run\ -- then finds nothing and draws an empty pet.
+# run\assets, run\assets_v3, run\assets_v4, run\badges_trainer는 git 심볼릭
+# 링크로 커밋돼 있다. 기본값인 core.symlinks=false 에서는 git이 각각을
+# "../assets" 라는 내용의 작은 텍스트 파일로 풀어놓고, 에셋을 run\ 기준으로
+# 찾는 게임은 아무것도 못 찾아 빈 펫을 그린다.
 #
-# Junctions are used rather than symlinks on purpose: directory symlinks need
-# admin rights or Developer Mode, junctions need neither.
-Say 'Checking asset links'
+# 심볼릭 링크 대신 junction을 쓰는 것은 의도적이다. 디렉터리 심볼릭 링크는
+# 관리자 권한이나 개발자 모드가 필요한데, junction은 둘 다 필요 없다.
+Say '에셋 링크 점검'
 foreach ($name in @('assets', 'assets_v3', 'assets_v4', 'badges_trainer')) {
     $link   = Join-Path $Root "run\$name"
     $target = Join-Path $Root $name
 
     if (-not (Test-Path $target)) {
-        Warn "$name is missing from the repo root -- assets are incomplete"
+        Warn "$name 이 저장소 루트에 없습니다 -- 에셋이 불완전합니다"
         continue
     }
     $item = Get-Item $link -ErrorAction SilentlyContinue
     if ($item -and $item.PSIsContainer) {
-        Write-Host "    run\$name ok"
+        Write-Host "    run\$name 정상"
         continue
     }
     if ($item) {
-        # a text file left behind by git, or a broken link
+        # git이 남긴 텍스트 파일이거나 깨진 링크
         Remove-Item -Force -Recurse $link
     }
     New-Item -ItemType Junction -Path $link -Target $target | Out-Null
-    Write-Host "    run\$name linked (junction -> $name)"
+    Write-Host "    run\$name 연결 (junction -> $name)"
 }
 
 # ---------------------------------------------------------------------------
-# 4. verify
+# 4. 확인
 # ---------------------------------------------------------------------------
-Say 'Verifying'
+Say '확인'
 & $VPy (Join-Path $Root 'tools\doctor.py')
-if ($LASTEXITCODE -ne 0) { Die 'environment check failed (see above)' }
+if ($LASTEXITCODE -ne 0) { Die '환경 점검 실패 (위 내용 참고)' }
 
 Write-Host @"
 
-Done. Run it with:
+완료. 실행:
 
     run\pikapet.bat
 
-The launcher uses .\.venv by default; set PIKAPET_VENV to point somewhere else.
-Right-click the pet for the menu.
-Tests: $VPy -m unittest discover -s run
+런처는 기본으로 .\.venv 를 씁니다. 다른 곳을 쓰려면 PIKAPET_VENV를 지정하세요.
+메뉴는 펫을 우클릭하면 나옵니다.
+테스트: $VPy -m unittest discover -s run
 "@
