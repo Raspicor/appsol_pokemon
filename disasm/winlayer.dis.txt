@@ -1,0 +1,2397 @@
+
+==============================================================================
+winlayer   (source line 1, 0 args)
+==============================================================================
+  0           RESUME                   0
+
+  3           LOAD_CONST               0 ('\nwinlayer.py\n윈도우 창 위에 올라타기 / 바탕화면 아이콘 위치 읽기 용 Win32 ctypes 유틸리티.\n\n주의: 이 파일의 기능들은 실제 Windows 환경에서만 동작하며, 이 프로젝트를\n만든 샌드박스에는 Windows/tkinter가 없어 직접 실행 테스트를 하지 못했습니다.\n모든 함수는 실패해도 프로그램이 죽지 않도록 try/except로 방어적으로 작성했습니다.\n')
+              STORE_NAME               0 (__doc__)
+
+ 12           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              1 (sys)
+              STORE_NAME               1 (sys)
+
+ 13           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              2 (ctypes)
+              STORE_NAME               2 (ctypes)
+
+ 14           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              3 (struct)
+              STORE_NAME               3 (struct)
+
+ 16           LOAD_NAME                1 (sys)
+              LOAD_ATTR                8 (platform)
+              LOAD_ATTR               11 (startswith + NULL|self)
+              LOAD_CONST               2 ('win')
+              CALL                     1
+              STORE_NAME               6 (IS_WINDOWS)
+
+ 18           LOAD_NAME                6 (IS_WINDOWS)
+              TO_BOOL
+              EXTENDED_ARG             7
+              POP_JUMP_IF_FALSE     1925 (to L1)
+              NOT_TAKEN
+
+ 25           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              7 (ctypes.wintypes)
+              STORE_NAME               2 (ctypes)
+
+ 27           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               16 (windll)
+              LOAD_ATTR               18 (user32)
+              STORE_NAME               9 (user32)
+
+ 28           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               16 (windll)
+              LOAD_ATTR               20 (kernel32)
+              STORE_NAME              10 (kernel32)
+
+ 30           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               22 (wintypes)
+              STORE_NAME              11 (wintypes)
+
+ 32           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               26 (EnumWindows)
+              STORE_ATTR              14 (restype)
+
+ 33           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               30 (WINFUNCTYPE)
+              PUSH_NULL
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               34 (LPARAM)
+              CALL                     3
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               34 (LPARAM)
+              BUILD_LIST               2
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               26 (EnumWindows)
+              STORE_ATTR              18 (argtypes)
+
+ 35           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               38 (GetWindowRect)
+              STORE_ATTR              14 (restype)
+
+ 36           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               42 (RECT)
+              CALL                     1
+              BUILD_LIST               2
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               38 (GetWindowRect)
+              STORE_ATTR              18 (argtypes)
+
+ 38           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               44 (IsWindowVisible)
+              STORE_ATTR              14 (restype)
+
+ 39           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              BUILD_LIST               1
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               44 (IsWindowVisible)
+              STORE_ATTR              18 (argtypes)
+
+ 41           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               46 (IsIconic)
+              STORE_ATTR              14 (restype)
+
+ 42           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              BUILD_LIST               1
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               46 (IsIconic)
+              STORE_ATTR              18 (argtypes)
+
+ 44           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               50 (GetWindowTextLengthW)
+              STORE_ATTR              14 (restype)
+
+ 45           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              BUILD_LIST               1
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               50 (GetWindowTextLengthW)
+              STORE_ATTR              18 (argtypes)
+
+ 47           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               52 (GetWindowTextW)
+              STORE_ATTR              14 (restype)
+
+ 48           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               54 (LPWSTR)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              BUILD_LIST               3
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               52 (GetWindowTextW)
+              STORE_ATTR              18 (argtypes)
+
+ 50           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               56 (FindWindowW)
+              STORE_ATTR              14 (restype)
+
+ 51           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               58 (LPCWSTR)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               58 (LPCWSTR)
+              BUILD_LIST               2
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               56 (FindWindowW)
+              STORE_ATTR              18 (argtypes)
+
+ 53           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               60 (FindWindowExW)
+              STORE_ATTR              14 (restype)
+
+ 54           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               58 (LPCWSTR)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               58 (LPCWSTR)
+              BUILD_LIST               4
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               60 (FindWindowExW)
+              STORE_ATTR              18 (argtypes)
+
+ 56           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               62 (c_ssize_t)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               64 (SendMessageW)
+              STORE_ATTR              14 (restype)
+
+ 57           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               66 (c_uint)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               68 (WPARAM)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               34 (LPARAM)
+              BUILD_LIST               4
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               64 (SendMessageW)
+              STORE_ATTR              18 (argtypes)
+
+ 59           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               70 (DWORD)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               72 (GetWindowThreadProcessId)
+              STORE_ATTR              14 (restype)
+
+ 60           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               70 (DWORD)
+              CALL                     1
+              BUILD_LIST               2
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               72 (GetWindowThreadProcessId)
+              STORE_ATTR              18 (argtypes)
+
+ 62           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               74 (ClientToScreen)
+              STORE_ATTR              14 (restype)
+
+ 63           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               76 (POINT)
+              CALL                     1
+              BUILD_LIST               2
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               74 (ClientToScreen)
+              STORE_ATTR              18 (argtypes)
+
+ 65           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               78 (GetClassNameW)
+              STORE_ATTR              14 (restype)
+
+ 66           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               32 (HWND)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               54 (LPWSTR)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              BUILD_LIST               3
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               78 (GetClassNameW)
+              STORE_ATTR              18 (argtypes)
+
+ 68           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               80 (FlashWindowEx)
+              STORE_ATTR              14 (restype)
+
+ 70           LOAD_BUILD_CLASS
+              PUSH_NULL
+              LOAD_CONST               3 (<code object _FLASHWINFO at 0x107c26700, file "winlayer.py", line 70>)
+              MAKE_FUNCTION
+              LOAD_CONST               4 ('_FLASHWINFO')
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               82 (Structure)
+              CALL                     3
+              STORE_NAME              42 (_FLASHWINFO)
+
+ 79           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME               42 (_FLASHWINFO)
+              CALL                     1
+              BUILD_LIST               1
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR               80 (FlashWindowEx)
+              STORE_ATTR              18 (argtypes)
+
+ 81           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               88 (OpenProcess)
+              STORE_ATTR              14 (restype)
+
+ 82           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               70 (DWORD)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               70 (DWORD)
+              BUILD_LIST               3
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               88 (OpenProcess)
+              STORE_ATTR              18 (argtypes)
+
+ 84           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               90 (LPVOID)
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               92 (VirtualAllocEx)
+              STORE_ATTR              14 (restype)
+
+ 85           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               90 (LPVOID)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               94 (c_size_t)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               70 (DWORD)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               70 (DWORD)
+              BUILD_LIST               5
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               92 (VirtualAllocEx)
+              STORE_ATTR              18 (argtypes)
+
+ 87           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               96 (VirtualFreeEx)
+              STORE_ATTR              14 (restype)
+
+ 88           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               90 (LPVOID)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               94 (c_size_t)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               70 (DWORD)
+              BUILD_LIST               4
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               96 (VirtualFreeEx)
+              STORE_ATTR              18 (argtypes)
+
+ 90           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               98 (ReadProcessMemory)
+              STORE_ATTR              14 (restype)
+
+ 91           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR              100 (LPCVOID)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               90 (LPVOID)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               94 (c_size_t)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               94 (c_size_t)
+              CALL                     1
+              BUILD_LIST               5
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR               98 (ReadProcessMemory)
+              STORE_ATTR              18 (argtypes)
+
+ 93           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR              102 (CloseHandle)
+              STORE_ATTR              14 (restype)
+
+ 94           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              BUILD_LIST               1
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR              102 (CloseHandle)
+              STORE_ATTR              18 (argtypes)
+
+ 96           LOAD_SMALL_INT           8
+              STORE_NAME              52 (PROCESS_VM_OPERATION)
+
+ 97           LOAD_SMALL_INT          16
+              STORE_NAME              53 (PROCESS_VM_READ)
+
+ 98           LOAD_SMALL_INT          32
+              STORE_NAME              54 (PROCESS_VM_WRITE)
+
+ 99           LOAD_CONST               5 (4096)
+              STORE_NAME              55 (MEM_COMMIT)
+
+100           LOAD_CONST               6 (8192)
+              STORE_NAME              56 (MEM_RESERVE)
+
+101           LOAD_CONST               7 (32768)
+              STORE_NAME              57 (MEM_RELEASE)
+
+102           LOAD_SMALL_INT           4
+              STORE_NAME              58 (PAGE_READWRITE)
+
+104           LOAD_CONST               8 (4100)
+              STORE_NAME              59 (LVM_GETITEMCOUNT)
+
+105           LOAD_CONST               9 (4112)
+              STORE_NAME              60 (LVM_GETITEMPOSITION)
+
+107           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR              122 (CreateMutexW)
+              STORE_ATTR              14 (restype)
+
+108           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR              124 (c_void_p)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               58 (LPCWSTR)
+              BUILD_LIST               3
+              LOAD_NAME               10 (kernel32)
+              LOAD_ATTR              122 (CreateMutexW)
+              STORE_ATTR              18 (argtypes)
+
+110           LOAD_SMALL_INT         183
+              STORE_NAME              63 (ERROR_ALREADY_EXISTS)
+
+112           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR              128 (GetSystemMetrics)
+              STORE_ATTR              14 (restype)
+
+113           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              BUILD_LIST               1
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR              128 (GetSystemMetrics)
+              STORE_ATTR              18 (argtypes)
+
+115           LOAD_BUILD_CLASS
+              PUSH_NULL
+              LOAD_CONST              10 (<code object MONITORINFO at 0x107c71370, file "winlayer.py", line 115>)
+              MAKE_FUNCTION
+              LOAD_CONST              11 ('MONITORINFO')
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               82 (Structure)
+              CALL                     3
+              STORE_NAME              65 (MONITORINFO)
+
+123           LOAD_SMALL_INT           1
+              STORE_NAME              66 (MONITORINFOF_PRIMARY)
+
+125           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               30 (WINFUNCTYPE)
+              PUSH_NULL
+
+126           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               48 (c_int)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+
+127           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               42 (RECT)
+              CALL                     1
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               34 (LPARAM)
+
+125           CALL                     5
+              STORE_NAME              67 (MonitorEnumProc)
+
+130           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR              136 (EnumDisplayMonitors)
+              STORE_ATTR              14 (restype)
+
+131           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               42 (RECT)
+              CALL                     1
+
+132           LOAD_NAME               67 (MonitorEnumProc)
+              LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               34 (LPARAM)
+
+131           BUILD_LIST               4
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR              136 (EnumDisplayMonitors)
+              STORE_ATTR              18 (argtypes)
+
+134           LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               24 (c_bool)
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR              138 (GetMonitorInfoW)
+              STORE_ATTR              14 (restype)
+
+135           LOAD_NAME               11 (wintypes)
+              LOAD_ATTR               86 (HANDLE)
+              LOAD_NAME                2 (ctypes)
+              LOAD_ATTR               40 (POINTER)
+              PUSH_NULL
+              LOAD_NAME               65 (MONITORINFO)
+              CALL                     1
+              BUILD_LIST               2
+              LOAD_NAME                9 (user32)
+              LOAD_ATTR              138 (GetMonitorInfoW)
+              STORE_ATTR              18 (argtypes)
+
+140           LOAD_SMALL_INT          76
+              STORE_NAME              70 (SM_XVIRTUALSCREEN)
+
+141           LOAD_SMALL_INT          77
+              STORE_NAME              71 (SM_YVIRTUALSCREEN)
+
+142           LOAD_SMALL_INT          78
+              STORE_NAME              72 (SM_CXVIRTUALSCREEN)
+
+143           LOAD_SMALL_INT          79
+              STORE_NAME              73 (SM_CYVIRTUALSCREEN)
+
+145   L1:     LOAD_CONST               1 (None)
+              STORE_GLOBAL            74 (_instance_mutex_handle)
+
+148           LOAD_CONST              12 (<code object set_dpi_aware at 0x107c1ba30, file "winlayer.py", line 148>)
+              MAKE_FUNCTION
+              STORE_NAME              75 (set_dpi_aware)
+
+181           LOAD_SMALL_INT           3
+              STORE_NAME              76 (FLASHW_ALL)
+
+182           LOAD_SMALL_INT          12
+              STORE_NAME              77 (FLASHW_TIMERNOFG)
+
+183           LOAD_SMALL_INT           0
+              STORE_NAME              78 (FLASHW_STOP)
+
+186           LOAD_CONST              24 ((8, 500))
+              LOAD_CONST              13 (<code object flash_taskbar at 0x7bef23c00, file "winlayer.py", line 186>)
+              MAKE_FUNCTION
+              SET_FUNCTION_ATTRIBUTE   1 (defaults)
+              STORE_NAME              79 (flash_taskbar)
+
+214           LOAD_CONST              14 (<code object stop_taskbar_flash at 0x7bf2bed00, file "winlayer.py", line 214>)
+              MAKE_FUNCTION
+              STORE_NAME              80 (stop_taskbar_flash)
+
+235           LOAD_CONST              25 (-20)
+              STORE_NAME              81 (GWL_EXSTYLE)
+
+236           LOAD_SMALL_INT         128
+              STORE_NAME              82 (WS_EX_TOOLWINDOW)
+
+237           LOAD_CONST              15 (262144)
+              STORE_NAME              83 (WS_EX_APPWINDOW)
+
+238           LOAD_SMALL_INT           2
+              STORE_NAME              84 (SWP_NOMOVE)
+
+239           LOAD_SMALL_INT           1
+              STORE_NAME              85 (SWP_NOSIZE)
+
+240           LOAD_SMALL_INT           4
+              STORE_NAME              86 (SWP_NOZORDER)
+
+241           LOAD_SMALL_INT          16
+              STORE_NAME              87 (SWP_NOACTIVATE)
+
+242           LOAD_SMALL_INT          32
+              STORE_NAME              88 (SWP_FRAMECHANGED)
+
+245           LOAD_CONST              16 (<code object hide_window_from_taskbar at 0x7bef3c000, file "winlayer.py", line 245>)
+              MAKE_FUNCTION
+              STORE_NAME              89 (hide_window_from_taskbar)
+
+273           LOAD_CONST              17 (<code object get_virtual_screen_rect at 0x7bf2d1e00, file "winlayer.py", line 273>)
+              MAKE_FUNCTION
+              STORE_NAME              90 (get_virtual_screen_rect)
+
+291           LOAD_CONST              18 (<code object get_secondary_monitor_rect at 0x107c0ab50, file "winlayer.py", line 291>)
+              MAKE_FUNCTION
+              STORE_NAME              91 (get_secondary_monitor_rect)
+
+326           LOAD_CONST              26 (('PikaPetSingleInstanceMutex_do_bro2',))
+              LOAD_CONST              19 (<code object acquire_single_instance_lock at 0x107c8c850, file "winlayer.py", line 326>)
+              MAKE_FUNCTION
+              SET_FUNCTION_ATTRIBUTE   1 (defaults)
+              STORE_NAME              92 (acquire_single_instance_lock)
+
+350           LOAD_CONST              20 (<code object get_taskbar_rect at 0x7bf2d2a80, file "winlayer.py", line 350>)
+              MAKE_FUNCTION
+              STORE_NAME              93 (get_taskbar_rect)
+
+366           LOAD_CONST              27 ((None, 40))
+              LOAD_CONST              21 (<code object get_window_ledges at 0x7bf2d3c00, file "winlayer.py", line 366>)
+              MAKE_FUNCTION
+              SET_FUNCTION_ATTRIBUTE   1 (defaults)
+              STORE_NAME              94 (get_window_ledges)
+
+423           LOAD_CONST              22 (<code object _find_defview at 0x7bef3c900, file "winlayer.py", line 423>)
+              MAKE_FUNCTION
+              STORE_NAME              95 (_find_defview)
+
+454           LOAD_CONST              28 ((60,))
+              LOAD_CONST              23 (<code object get_desktop_icon_positions at 0x7bf2d6a00, file "winlayer.py", line 454>)
+              MAKE_FUNCTION
+              SET_FUNCTION_ATTRIBUTE   1 (defaults)
+              STORE_NAME              96 (get_desktop_icon_positions)
+              LOAD_CONST               1 (None)
+              RETURN_VALUE
+
+==============================================================================
+winlayer._FLASHWINFO   (source line 70, 0 args)
+==============================================================================
+ 70           RESUME                   0
+              LOAD_NAME                0 (__name__)
+              STORE_NAME               1 (__module__)
+              LOAD_CONST               0 ('_FLASHWINFO')
+              STORE_NAME               2 (__qualname__)
+              LOAD_SMALL_INT          70
+              STORE_NAME               3 (__firstlineno__)
+
+ 72           LOAD_CONST               1 ('cbSize')
+              LOAD_NAME                4 (ctypes)
+              LOAD_ATTR               10 (c_uint)
+              BUILD_TUPLE              2
+
+ 73           LOAD_CONST               2 ('hwnd')
+              LOAD_NAME                6 (wintypes)
+              LOAD_ATTR               14 (HWND)
+              BUILD_TUPLE              2
+
+ 74           LOAD_CONST               3 ('dwFlags')
+              LOAD_NAME                4 (ctypes)
+              LOAD_ATTR               10 (c_uint)
+              BUILD_TUPLE              2
+
+ 75           LOAD_CONST               4 ('uCount')
+              LOAD_NAME                4 (ctypes)
+              LOAD_ATTR               10 (c_uint)
+              BUILD_TUPLE              2
+
+ 76           LOAD_CONST               5 ('dwTimeout')
+              LOAD_NAME                4 (ctypes)
+              LOAD_ATTR               10 (c_uint)
+              BUILD_TUPLE              2
+
+ 71           BUILD_LIST               5
+              STORE_NAME               8 (_fields_)
+              LOAD_CONST               6 (())
+              STORE_NAME               9 (__static_attributes__)
+              LOAD_CONST               7 (None)
+              RETURN_VALUE
+
+==============================================================================
+winlayer.MONITORINFO   (source line 115, 0 args)
+==============================================================================
+115           RESUME                   0
+              LOAD_NAME                0 (__name__)
+              STORE_NAME               1 (__module__)
+              LOAD_CONST               0 ('MONITORINFO')
+              STORE_NAME               2 (__qualname__)
+              LOAD_SMALL_INT         115
+              STORE_NAME               3 (__firstlineno__)
+
+117           LOAD_CONST               1 ('cbSize')
+              LOAD_NAME                4 (wintypes)
+              LOAD_ATTR               10 (DWORD)
+              BUILD_TUPLE              2
+
+118           LOAD_CONST               2 ('rcMonitor')
+              LOAD_NAME                4 (wintypes)
+              LOAD_ATTR               12 (RECT)
+              BUILD_TUPLE              2
+
+119           LOAD_CONST               3 ('rcWork')
+              LOAD_NAME                4 (wintypes)
+              LOAD_ATTR               12 (RECT)
+              BUILD_TUPLE              2
+
+120           LOAD_CONST               4 ('dwFlags')
+              LOAD_NAME                4 (wintypes)
+              LOAD_ATTR               10 (DWORD)
+              BUILD_TUPLE              2
+
+116           BUILD_LIST               4
+              STORE_NAME               7 (_fields_)
+              LOAD_CONST               5 (())
+              STORE_NAME               8 (__static_attributes__)
+              LOAD_CONST               6 (None)
+              RETURN_VALUE
+
+==============================================================================
+winlayer.set_dpi_aware   (source line 148, 0 args)
+==============================================================================
+ 148            RESUME                   0
+
+ 157            LOAD_GLOBAL              0 (IS_WINDOWS)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L1)
+                NOT_TAKEN
+
+ 158            LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 167    L1:     NOP
+
+ 169    L2:     LOAD_GLOBAL              2 (ctypes)
+                LOAD_ATTR                4 (windll)
+                LOAD_ATTR                6 (shcore)
+                LOAD_ATTR                9 (SetProcessDpiAwareness + NULL|self)
+                LOAD_SMALL_INT           2
+                CALL                     1
+                STORE_FAST               0 (hr)
+
+ 170            LOAD_FAST_BORROW         0 (hr)
+                LOAD_SMALL_INT           0
+                COMPARE_OP              88 (bool(==))
+                POP_JUMP_IF_FALSE        3 (to L4)
+                NOT_TAKEN
+
+ 171    L3:     LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 170    L4:     NOP
+
+ 174    L5:     NOP
+
+ 176    L6:     LOAD_GLOBAL              2 (ctypes)
+                LOAD_ATTR                4 (windll)
+                LOAD_ATTR               12 (user32)
+                LOAD_ATTR               15 (SetProcessDPIAware + NULL|self)
+                CALL                     0
+                POP_TOP
+        L7:     LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+  --    L8:     PUSH_EXC_INFO
+
+ 172            LOAD_GLOBAL             10 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        4 (to L10)
+                NOT_TAKEN
+                POP_TOP
+
+ 173    L9:     POP_EXCEPT
+                JUMP_BACKWARD_NO_INTERRUPT 56 (to L5)
+
+ 172   L10:     RERAISE                  0
+
+  --   L11:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L12:     PUSH_EXC_INFO
+
+ 177            LOAD_GLOBAL             10 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L14)
+                NOT_TAKEN
+                POP_TOP
+
+ 178   L13:     POP_EXCEPT
+                LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 177   L14:     RERAISE                  0
+
+  --   L15:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L8 [0]
+  L6 to L7 -> L12 [0]
+  L8 to L9 -> L11 [1] lasti
+  L10 to L11 -> L11 [1] lasti
+  L12 to L13 -> L15 [1] lasti
+  L14 to L15 -> L15 [1] lasti
+
+==============================================================================
+winlayer.flash_taskbar   (source line 186, 3 args)
+==============================================================================
+ 186           RESUME                   0
+
+ 196           LOAD_GLOBAL              0 (IS_WINDOWS)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L1)
+               NOT_TAKEN
+
+ 197           LOAD_CONST               1 (False)
+               RETURN_VALUE
+
+ 198   L1:     NOP
+
+ 199   L2:     LOAD_GLOBAL              3 (int + NULL)
+               LOAD_FAST_BORROW         0 (hwnd)
+               CALL                     1
+               STORE_FAST               0 (hwnd)
+
+ 200           LOAD_FAST_BORROW         0 (hwnd)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L4)
+               NOT_TAKEN
+
+ 201   L3:     LOAD_CONST               1 (False)
+               RETURN_VALUE
+
+ 202   L4:     LOAD_GLOBAL              5 (_FLASHWINFO + NULL)
+               CALL                     0
+               STORE_FAST               3 (info)
+
+ 203           LOAD_GLOBAL              6 (ctypes)
+               LOAD_ATTR                8 (sizeof)
+               PUSH_NULL
+               LOAD_GLOBAL              4 (_FLASHWINFO)
+               CALL                     1
+               LOAD_FAST_BORROW         3 (info)
+               STORE_ATTR               5 (cbSize)
+
+ 204           LOAD_FAST_BORROW_LOAD_FAST_BORROW 3 (hwnd, info)
+               STORE_ATTR               6 (hwnd)
+
+ 205           LOAD_GLOBAL             14 (FLASHW_ALL)
+               LOAD_GLOBAL             16 (FLASHW_TIMERNOFG)
+               BINARY_OP                7 (|)
+               LOAD_FAST_BORROW         3 (info)
+               STORE_ATTR               9 (dwFlags)
+
+ 206           LOAD_GLOBAL             21 (max + NULL)
+               LOAD_SMALL_INT           1
+               LOAD_GLOBAL              3 (int + NULL)
+               LOAD_FAST_BORROW         1 (count)
+               CALL                     1
+               CALL                     2
+               LOAD_FAST_BORROW         3 (info)
+               STORE_ATTR              11 (uCount)
+
+ 207           LOAD_GLOBAL             21 (max + NULL)
+               LOAD_SMALL_INT           1
+               LOAD_GLOBAL              3 (int + NULL)
+               LOAD_FAST_BORROW         2 (interval_ms)
+               CALL                     1
+               CALL                     2
+               LOAD_FAST_BORROW         3 (info)
+               STORE_ATTR              12 (dwTimeout)
+
+ 208           LOAD_GLOBAL             26 (user32)
+               LOAD_ATTR               29 (FlashWindowEx + NULL|self)
+               LOAD_GLOBAL              6 (ctypes)
+               LOAD_ATTR               30 (byref)
+               PUSH_NULL
+               LOAD_FAST_BORROW         3 (info)
+               CALL                     1
+               CALL                     1
+               POP_TOP
+
+ 209   L5:     LOAD_CONST               2 (True)
+               RETURN_VALUE
+
+  --   L6:     PUSH_EXC_INFO
+
+ 210           LOAD_GLOBAL             32 (Exception)
+               CHECK_EXC_MATCH
+               POP_JUMP_IF_FALSE        5 (to L8)
+               NOT_TAKEN
+               POP_TOP
+
+ 211   L7:     POP_EXCEPT
+               LOAD_CONST               1 (False)
+               RETURN_VALUE
+
+ 210   L8:     RERAISE                  0
+
+  --   L9:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L6 [0]
+  L4 to L5 -> L6 [0]
+  L6 to L7 -> L9 [1] lasti
+  L8 to L9 -> L9 [1] lasti
+
+==============================================================================
+winlayer.stop_taskbar_flash   (source line 214, 1 args)
+==============================================================================
+ 214           RESUME                   0
+
+ 217           LOAD_GLOBAL              0 (IS_WINDOWS)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L1)
+               NOT_TAKEN
+
+ 218           LOAD_CONST               1 (False)
+               RETURN_VALUE
+
+ 219   L1:     NOP
+
+ 220   L2:     LOAD_GLOBAL              3 (int + NULL)
+               LOAD_FAST_BORROW         0 (hwnd)
+               CALL                     1
+               STORE_FAST               0 (hwnd)
+
+ 221           LOAD_FAST_BORROW         0 (hwnd)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L4)
+               NOT_TAKEN
+
+ 222   L3:     LOAD_CONST               1 (False)
+               RETURN_VALUE
+
+ 223   L4:     LOAD_GLOBAL              5 (_FLASHWINFO + NULL)
+               CALL                     0
+               STORE_FAST               1 (info)
+
+ 224           LOAD_GLOBAL              6 (ctypes)
+               LOAD_ATTR                8 (sizeof)
+               PUSH_NULL
+               LOAD_GLOBAL              4 (_FLASHWINFO)
+               CALL                     1
+               LOAD_FAST_BORROW         1 (info)
+               STORE_ATTR               5 (cbSize)
+
+ 225           LOAD_FAST_BORROW_LOAD_FAST_BORROW 1 (hwnd, info)
+               STORE_ATTR               6 (hwnd)
+
+ 226           LOAD_GLOBAL             14 (FLASHW_STOP)
+               LOAD_FAST_BORROW         1 (info)
+               STORE_ATTR               8 (dwFlags)
+
+ 227           LOAD_SMALL_INT           0
+               LOAD_FAST_BORROW         1 (info)
+               STORE_ATTR               9 (uCount)
+
+ 228           LOAD_SMALL_INT           0
+               LOAD_FAST_BORROW         1 (info)
+               STORE_ATTR              10 (dwTimeout)
+
+ 229           LOAD_GLOBAL             22 (user32)
+               LOAD_ATTR               25 (FlashWindowEx + NULL|self)
+               LOAD_GLOBAL              6 (ctypes)
+               LOAD_ATTR               26 (byref)
+               PUSH_NULL
+               LOAD_FAST_BORROW         1 (info)
+               CALL                     1
+               CALL                     1
+               POP_TOP
+
+ 230   L5:     LOAD_CONST               2 (True)
+               RETURN_VALUE
+
+  --   L6:     PUSH_EXC_INFO
+
+ 231           LOAD_GLOBAL             28 (Exception)
+               CHECK_EXC_MATCH
+               POP_JUMP_IF_FALSE        5 (to L8)
+               NOT_TAKEN
+               POP_TOP
+
+ 232   L7:     POP_EXCEPT
+               LOAD_CONST               1 (False)
+               RETURN_VALUE
+
+ 231   L8:     RERAISE                  0
+
+  --   L9:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L6 [0]
+  L4 to L5 -> L6 [0]
+  L6 to L7 -> L9 [1] lasti
+  L8 to L9 -> L9 [1] lasti
+
+==============================================================================
+winlayer.hide_window_from_taskbar   (source line 245, 1 args)
+==============================================================================
+ 245            RESUME                   0
+
+ 253            LOAD_GLOBAL              0 (IS_WINDOWS)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L1)
+                NOT_TAKEN
+
+ 254            LOAD_CONST               1 (False)
+                RETURN_VALUE
+
+ 255    L1:     NOP
+
+ 256    L2:     LOAD_GLOBAL              3 (int + NULL)
+                LOAD_FAST_BORROW         0 (hwnd)
+                CALL                     1
+                STORE_FAST               0 (hwnd)
+
+ 257            LOAD_FAST_BORROW         0 (hwnd)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L4)
+                NOT_TAKEN
+
+ 258    L3:     LOAD_CONST               1 (False)
+                RETURN_VALUE
+
+ 259    L4:     LOAD_GLOBAL              5 (getattr + NULL)
+                LOAD_GLOBAL              6 (user32)
+                LOAD_CONST               2 ('GetWindowLongPtrW')
+                LOAD_CONST               3 (None)
+                CALL                     3
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE        17 (to L7)
+        L5:     NOT_TAKEN
+        L6:     POP_TOP
+                LOAD_GLOBAL              6 (user32)
+                LOAD_ATTR                8 (GetWindowLongW)
+        L7:     STORE_FAST               1 (get_style)
+
+ 260            LOAD_GLOBAL              5 (getattr + NULL)
+                LOAD_GLOBAL              6 (user32)
+                LOAD_CONST               4 ('SetWindowLongPtrW')
+                LOAD_CONST               3 (None)
+                CALL                     3
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE        17 (to L10)
+        L8:     NOT_TAKEN
+        L9:     POP_TOP
+                LOAD_GLOBAL              6 (user32)
+                LOAD_ATTR               10 (SetWindowLongW)
+       L10:     STORE_FAST               2 (set_style)
+
+ 261            LOAD_FAST_BORROW         1 (get_style)
+                PUSH_NULL
+                LOAD_FAST_BORROW         0 (hwnd)
+                LOAD_GLOBAL             12 (GWL_EXSTYLE)
+                CALL                     2
+                STORE_FAST               3 (cur)
+
+ 262            LOAD_FAST_BORROW         3 (cur)
+                LOAD_GLOBAL             14 (WS_EX_TOOLWINDOW)
+                BINARY_OP                7 (|)
+                LOAD_GLOBAL             16 (WS_EX_APPWINDOW)
+                UNARY_INVERT
+                BINARY_OP                1 (&)
+                STORE_FAST               4 (new_style)
+
+ 263            LOAD_FAST_BORROW         2 (set_style)
+                PUSH_NULL
+                LOAD_FAST_BORROW         0 (hwnd)
+                LOAD_GLOBAL             12 (GWL_EXSTYLE)
+                LOAD_FAST_BORROW         4 (new_style)
+                CALL                     3
+                POP_TOP
+
+ 266            LOAD_GLOBAL              6 (user32)
+                LOAD_ATTR               19 (SetWindowPos + NULL|self)
+                LOAD_FAST_BORROW         0 (hwnd)
+                LOAD_CONST               3 (None)
+                LOAD_SMALL_INT           0
+                LOAD_SMALL_INT           0
+                LOAD_SMALL_INT           0
+                LOAD_SMALL_INT           0
+
+ 267            LOAD_GLOBAL             20 (SWP_NOMOVE)
+                LOAD_GLOBAL             22 (SWP_NOSIZE)
+                BINARY_OP                7 (|)
+                LOAD_GLOBAL             24 (SWP_NOZORDER)
+                BINARY_OP                7 (|)
+                LOAD_GLOBAL             26 (SWP_NOACTIVATE)
+                BINARY_OP                7 (|)
+                LOAD_GLOBAL             28 (SWP_FRAMECHANGED)
+                BINARY_OP                7 (|)
+
+ 266            CALL                     7
+                POP_TOP
+
+ 268   L11:     LOAD_CONST               5 (True)
+                RETURN_VALUE
+
+  --   L12:     PUSH_EXC_INFO
+
+ 269            LOAD_GLOBAL             30 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L14)
+                NOT_TAKEN
+                POP_TOP
+
+ 270   L13:     POP_EXCEPT
+                LOAD_CONST               1 (False)
+                RETURN_VALUE
+
+ 269   L14:     RERAISE                  0
+
+  --   L15:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L12 [0]
+  L4 to L5 -> L12 [0]
+  L6 to L8 -> L12 [0]
+  L9 to L11 -> L12 [0]
+  L12 to L13 -> L15 [1] lasti
+  L14 to L15 -> L15 [1] lasti
+
+==============================================================================
+winlayer.get_virtual_screen_rect   (source line 273, 0 args)
+==============================================================================
+ 273           RESUME                   0
+
+ 277           LOAD_GLOBAL              0 (IS_WINDOWS)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L1)
+               NOT_TAKEN
+
+ 278           LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+ 279   L1:     NOP
+
+ 280   L2:     LOAD_GLOBAL              2 (user32)
+               LOAD_ATTR                5 (GetSystemMetrics + NULL|self)
+               LOAD_GLOBAL              6 (SM_XVIRTUALSCREEN)
+               CALL                     1
+               STORE_FAST               0 (left)
+
+ 281           LOAD_GLOBAL              2 (user32)
+               LOAD_ATTR                5 (GetSystemMetrics + NULL|self)
+               LOAD_GLOBAL              8 (SM_YVIRTUALSCREEN)
+               CALL                     1
+               STORE_FAST               1 (top)
+
+ 282           LOAD_GLOBAL              2 (user32)
+               LOAD_ATTR                5 (GetSystemMetrics + NULL|self)
+               LOAD_GLOBAL             10 (SM_CXVIRTUALSCREEN)
+               CALL                     1
+               STORE_FAST               2 (width)
+
+ 283           LOAD_GLOBAL              2 (user32)
+               LOAD_ATTR                5 (GetSystemMetrics + NULL|self)
+               LOAD_GLOBAL             12 (SM_CYVIRTUALSCREEN)
+               CALL                     1
+               STORE_FAST               3 (height)
+
+ 284           LOAD_FAST_BORROW         2 (width)
+               LOAD_SMALL_INT           0
+               COMPARE_OP              58 (bool(<=))
+               POP_JUMP_IF_TRUE         8 (to L3)
+               NOT_TAKEN
+               LOAD_FAST_BORROW         3 (height)
+               LOAD_SMALL_INT           0
+               COMPARE_OP              58 (bool(<=))
+               POP_JUMP_IF_FALSE        3 (to L4)
+               NOT_TAKEN
+
+ 285   L3:     LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+ 286   L4:     LOAD_FAST_BORROW_LOAD_FAST_BORROW 1 (left, top)
+               LOAD_FAST_BORROW_LOAD_FAST_BORROW 35 (width, height)
+               BUILD_TUPLE              4
+       L5:     RETURN_VALUE
+
+  --   L6:     PUSH_EXC_INFO
+
+ 287           LOAD_GLOBAL             14 (Exception)
+               CHECK_EXC_MATCH
+               POP_JUMP_IF_FALSE        5 (to L8)
+               NOT_TAKEN
+               POP_TOP
+
+ 288   L7:     POP_EXCEPT
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+ 287   L8:     RERAISE                  0
+
+  --   L9:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L6 [0]
+  L4 to L5 -> L6 [0]
+  L6 to L7 -> L9 [1] lasti
+  L8 to L9 -> L9 [1] lasti
+
+==============================================================================
+winlayer.get_secondary_monitor_rect   (source line 291, 0 args)
+==============================================================================
+  --           MAKE_CELL                3 (found)
+
+ 291           RESUME                   0
+
+ 295           LOAD_GLOBAL              0 (IS_WINDOWS)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L1)
+               NOT_TAKEN
+
+ 296           LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+ 297   L1:     NOP
+
+ 298   L2:     LOAD_CONST               2 ('rect')
+               LOAD_CONST               1 (None)
+               BUILD_MAP                1
+               STORE_DEREF              3 (found)
+
+ 300           LOAD_FAST_BORROW         3 (found)
+               BUILD_TUPLE              1
+               LOAD_CONST               3 (<code object _cb at 0x7bef3c300, file "winlayer.py", line 300>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               STORE_FAST               0 (_cb)
+
+ 316           LOAD_GLOBAL              3 (MonitorEnumProc + NULL)
+               LOAD_FAST_BORROW         0 (_cb)
+               CALL                     1
+               STORE_FAST               1 (proc)
+
+ 317           LOAD_GLOBAL              4 (user32)
+               LOAD_ATTR                7 (EnumDisplayMonitors + NULL|self)
+               LOAD_CONST               1 (None)
+               LOAD_CONST               1 (None)
+               LOAD_FAST_BORROW         1 (proc)
+               LOAD_SMALL_INT           0
+               CALL                     4
+               POP_TOP
+
+ 318           LOAD_DEREF               3 (found)
+               LOAD_CONST               2 ('rect')
+               BINARY_OP               26 ([])
+               STORE_FAST               2 (rect)
+
+ 319           LOAD_FAST_BORROW         2 (rect)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       31 (to L4)
+               NOT_TAKEN
+               LOAD_FAST_BORROW         2 (rect)
+               LOAD_SMALL_INT           2
+               BINARY_OP               26 ([])
+               LOAD_SMALL_INT           0
+               COMPARE_OP             148 (bool(>))
+               POP_JUMP_IF_FALSE       17 (to L4)
+               NOT_TAKEN
+               LOAD_FAST_BORROW         2 (rect)
+               LOAD_SMALL_INT           3
+               BINARY_OP               26 ([])
+               LOAD_SMALL_INT           0
+               COMPARE_OP             148 (bool(>))
+               POP_JUMP_IF_FALSE        3 (to L4)
+               NOT_TAKEN
+
+ 320           LOAD_FAST_BORROW         2 (rect)
+       L3:     RETURN_VALUE
+
+ 321   L4:     LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+  --   L5:     PUSH_EXC_INFO
+
+ 322           LOAD_GLOBAL              8 (Exception)
+               CHECK_EXC_MATCH
+               POP_JUMP_IF_FALSE        5 (to L7)
+               NOT_TAKEN
+               POP_TOP
+
+ 323   L6:     POP_EXCEPT
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+ 322   L7:     RERAISE                  0
+
+  --   L8:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L5 [0]
+  L5 to L6 -> L8 [1] lasti
+  L7 to L8 -> L8 [1] lasti
+
+==============================================================================
+winlayer.get_secondary_monitor_rect._cb   (source line 300, 4 args)
+==============================================================================
+  --            COPY_FREE_VARS           1
+
+ 300            RESUME                   0
+
+ 301            NOP
+
+ 302    L1:     LOAD_DEREF               6 (found)
+                LOAD_CONST               0 ('rect')
+                BINARY_OP               26 ([])
+                POP_JUMP_IF_NONE         3 (to L3)
+                NOT_TAKEN
+
+ 303    L2:     LOAD_SMALL_INT           1
+                RETURN_VALUE
+
+ 304    L3:     LOAD_GLOBAL              1 (MONITORINFO + NULL)
+                CALL                     0
+                STORE_FAST               4 (mi)
+
+ 305            LOAD_GLOBAL              2 (ctypes)
+                LOAD_ATTR                4 (sizeof)
+                PUSH_NULL
+                LOAD_GLOBAL              0 (MONITORINFO)
+                CALL                     1
+                LOAD_FAST_BORROW         4 (mi)
+                STORE_ATTR               3 (cbSize)
+
+ 306            LOAD_GLOBAL              8 (user32)
+                LOAD_ATTR               11 (GetMonitorInfoW + NULL|self)
+                LOAD_FAST_BORROW         0 (hmonitor)
+                LOAD_GLOBAL              2 (ctypes)
+                LOAD_ATTR               12 (byref)
+                PUSH_NULL
+                LOAD_FAST_BORROW         4 (mi)
+                CALL                     1
+                CALL                     2
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L5)
+                NOT_TAKEN
+
+ 307    L4:     LOAD_SMALL_INT           1
+                RETURN_VALUE
+
+ 308    L5:     LOAD_FAST_BORROW         4 (mi)
+                LOAD_ATTR               14 (dwFlags)
+                LOAD_GLOBAL             16 (MONITORINFOF_PRIMARY)
+                BINARY_OP                1 (&)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        3 (to L7)
+        L6:     NOT_TAKEN
+
+ 309            LOAD_SMALL_INT           1
+                RETURN_VALUE
+
+ 310    L7:     LOAD_FAST_BORROW         4 (mi)
+                LOAD_ATTR               18 (rcMonitor)
+                STORE_FAST               5 (r)
+
+ 311            LOAD_FAST_BORROW         5 (r)
+                LOAD_ATTR               20 (left)
+                LOAD_FAST_BORROW         5 (r)
+                LOAD_ATTR               22 (top)
+                LOAD_FAST_BORROW         5 (r)
+                LOAD_ATTR               24 (right)
+                LOAD_FAST_BORROW         5 (r)
+                LOAD_ATTR               20 (left)
+                BINARY_OP               10 (-)
+                LOAD_FAST_BORROW         5 (r)
+                LOAD_ATTR               26 (bottom)
+                LOAD_FAST_BORROW         5 (r)
+                LOAD_ATTR               22 (top)
+                BINARY_OP               10 (-)
+                BUILD_TUPLE              4
+                LOAD_DEREF               6 (found)
+                LOAD_CONST               0 ('rect')
+                STORE_SUBSCR
+
+ 314    L8:     LOAD_SMALL_INT           1
+                RETURN_VALUE
+
+  --    L9:     PUSH_EXC_INFO
+
+ 312            LOAD_GLOBAL             28 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L11)
+                NOT_TAKEN
+                POP_TOP
+
+ 313   L10:     POP_EXCEPT
+
+ 314            LOAD_SMALL_INT           1
+                RETURN_VALUE
+
+ 312   L11:     RERAISE                  0
+
+  --   L12:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L9 [0]
+  L3 to L4 -> L9 [0]
+  L5 to L6 -> L9 [0]
+  L7 to L8 -> L9 [0]
+  L9 to L10 -> L12 [1] lasti
+  L11 to L12 -> L12 [1] lasti
+
+==============================================================================
+winlayer.acquire_single_instance_lock   (source line 326, 1 args)
+==============================================================================
+ 326            RESUME                   0
+
+ 336            LOAD_GLOBAL              0 (IS_WINDOWS)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L1)
+                NOT_TAKEN
+
+ 337            LOAD_CONST               1 (True)
+                RETURN_VALUE
+
+ 338    L1:     NOP
+
+ 339    L2:     LOAD_GLOBAL              2 (kernel32)
+                LOAD_ATTR                5 (CreateMutexW + NULL|self)
+                LOAD_CONST               2 (None)
+                LOAD_CONST               3 (False)
+                LOAD_FAST_BORROW         0 (name)
+                CALL                     3
+                STORE_FAST               1 (handle)
+
+ 340            LOAD_FAST_BORROW         1 (handle)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L4)
+        L3:     NOT_TAKEN
+
+ 341            LOAD_CONST               1 (True)
+                RETURN_VALUE
+
+ 342    L4:     LOAD_FAST_BORROW         1 (handle)
+                STORE_GLOBAL             3 (_instance_mutex_handle)
+
+ 343            LOAD_GLOBAL              8 (ctypes)
+                LOAD_ATTR               10 (GetLastError)
+                PUSH_NULL
+                CALL                     0
+                LOAD_GLOBAL             12 (ERROR_ALREADY_EXISTS)
+                COMPARE_OP              88 (bool(==))
+                POP_JUMP_IF_FALSE        3 (to L6)
+                NOT_TAKEN
+
+ 344    L5:     LOAD_CONST               3 (False)
+                RETURN_VALUE
+
+ 345    L6:     LOAD_CONST               1 (True)
+                RETURN_VALUE
+
+  --    L7:     PUSH_EXC_INFO
+
+ 346            LOAD_GLOBAL             14 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L9)
+                NOT_TAKEN
+                POP_TOP
+
+ 347    L8:     POP_EXCEPT
+                LOAD_CONST               1 (True)
+                RETURN_VALUE
+
+ 346    L9:     RERAISE                  0
+
+  --   L10:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L7 [0]
+  L4 to L5 -> L7 [0]
+  L7 to L8 -> L10 [1] lasti
+  L9 to L10 -> L10 [1] lasti
+
+==============================================================================
+winlayer.get_taskbar_rect   (source line 350, 0 args)
+==============================================================================
+ 350            RESUME                   0
+
+ 352            LOAD_GLOBAL              0 (IS_WINDOWS)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L1)
+                NOT_TAKEN
+
+ 353            LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 354    L1:     NOP
+
+ 355    L2:     LOAD_GLOBAL              2 (user32)
+                LOAD_ATTR                5 (FindWindowW + NULL|self)
+                LOAD_CONST               2 ('Shell_TrayWnd')
+                LOAD_CONST               1 (None)
+                CALL                     2
+                STORE_FAST               0 (hwnd)
+
+ 356            LOAD_FAST_BORROW         0 (hwnd)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L4)
+        L3:     NOT_TAKEN
+
+ 357            LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 358    L4:     LOAD_GLOBAL              6 (wintypes)
+                LOAD_ATTR                9 (RECT + NULL|self)
+                CALL                     0
+                STORE_FAST               1 (rect)
+
+ 359            LOAD_GLOBAL              2 (user32)
+                LOAD_ATTR               11 (GetWindowRect + NULL|self)
+                LOAD_FAST_BORROW         0 (hwnd)
+                LOAD_GLOBAL             12 (ctypes)
+                LOAD_ATTR               14 (byref)
+                PUSH_NULL
+                LOAD_FAST_BORROW         1 (rect)
+                CALL                     1
+                CALL                     2
+                TO_BOOL
+                POP_JUMP_IF_FALSE       47 (to L8)
+        L5:     NOT_TAKEN
+
+ 360    L6:     LOAD_FAST_BORROW         1 (rect)
+                LOAD_ATTR               16 (left)
+                LOAD_FAST_BORROW         1 (rect)
+                LOAD_ATTR               18 (top)
+                LOAD_FAST_BORROW         1 (rect)
+                LOAD_ATTR               20 (right)
+                LOAD_FAST_BORROW         1 (rect)
+                LOAD_ATTR               22 (bottom)
+                BUILD_TUPLE              4
+        L7:     RETURN_VALUE
+
+ 359    L8:     NOP
+
+ 363            LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+  --    L9:     PUSH_EXC_INFO
+
+ 361            LOAD_GLOBAL             24 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L11)
+                NOT_TAKEN
+                POP_TOP
+
+ 362   L10:     POP_EXCEPT
+
+ 363            LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 361   L11:     RERAISE                  0
+
+  --   L12:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L9 [0]
+  L4 to L5 -> L9 [0]
+  L6 to L7 -> L9 [0]
+  L9 to L10 -> L12 [1] lasti
+  L11 to L12 -> L12 [1] lasti
+
+==============================================================================
+winlayer.get_window_ledges   (source line 366, 2 args)
+==============================================================================
+  --           MAKE_CELL                0 (exclude_titles)
+               MAKE_CELL                1 (max_windows)
+               MAKE_CELL                3 (ledges)
+
+ 366           RESUME                   0
+
+ 371           LOAD_GLOBAL              0 (IS_WINDOWS)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L1)
+               NOT_TAKEN
+
+ 372           BUILD_LIST               0
+               RETURN_VALUE
+
+ 374   L1:     LOAD_DEREF               0 (exclude_titles)
+               COPY                     1
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L2)
+               NOT_TAKEN
+               POP_TOP
+               BUILD_LIST               0
+       L2:     STORE_DEREF              0 (exclude_titles)
+
+ 375           BUILD_LIST               0
+               STORE_DEREF              3 (ledges)
+
+ 377           NOP
+
+ 378   L3:     LOAD_GLOBAL              2 (ctypes)
+               LOAD_ATTR                4 (WINFUNCTYPE)
+               PUSH_NULL
+               LOAD_GLOBAL              2 (ctypes)
+               LOAD_ATTR                6 (c_bool)
+               LOAD_GLOBAL              8 (wintypes)
+               LOAD_ATTR               10 (HWND)
+               LOAD_GLOBAL              8 (wintypes)
+               LOAD_ATTR               12 (LPARAM)
+               CALL                     3
+
+ 379           LOAD_FAST_BORROW         0 (exclude_titles)
+               LOAD_FAST_BORROW         3 (ledges)
+               LOAD_FAST_BORROW         1 (max_windows)
+               BUILD_TUPLE              3
+               LOAD_CONST               1 (<code object _cb at 0x7bef35e00, file "winlayer.py", line 378>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+
+ 378           CALL                     0
+
+ 379           STORE_FAST               2 (_cb)
+
+ 416           LOAD_GLOBAL             14 (user32)
+               LOAD_ATTR               17 (EnumWindows + NULL|self)
+               LOAD_FAST_BORROW         2 (_cb)
+               LOAD_SMALL_INT           0
+               CALL                     2
+               POP_TOP
+
+ 420   L4:     LOAD_DEREF               3 (ledges)
+               RETURN_VALUE
+
+  --   L5:     PUSH_EXC_INFO
+
+ 417           LOAD_GLOBAL             18 (Exception)
+               CHECK_EXC_MATCH
+               POP_JUMP_IF_FALSE        6 (to L7)
+               NOT_TAKEN
+               POP_TOP
+
+ 418           BUILD_LIST               0
+               SWAP                     2
+       L6:     POP_EXCEPT
+               RETURN_VALUE
+
+ 417   L7:     RERAISE                  0
+
+  --   L8:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L3 to L4 -> L5 [0]
+  L5 to L6 -> L8 [1] lasti
+  L7 to L8 -> L8 [1] lasti
+
+==============================================================================
+winlayer.get_window_ledges._cb   (source line 378, 2 args)
+==============================================================================
+  --            COPY_FREE_VARS           3
+                MAKE_CELL                7 (title)
+
+ 378            RESUME                   0
+
+ 380            NOP
+
+ 381    L1:     LOAD_GLOBAL              1 (len + NULL)
+                LOAD_DEREF               9 (ledges)
+                CALL                     1
+                LOAD_DEREF              10 (max_windows)
+                COMPARE_OP             188 (bool(>=))
+                POP_JUMP_IF_FALSE        3 (to L3)
+        L2:     NOT_TAKEN
+
+ 382            LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 383    L3:     LOAD_GLOBAL              2 (user32)
+                LOAD_ATTR                5 (IsWindowVisible + NULL|self)
+                LOAD_FAST_BORROW         0 (hwnd)
+                CALL                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L5)
+        L4:     NOT_TAKEN
+
+ 384            LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 385    L5:     LOAD_GLOBAL              2 (user32)
+                LOAD_ATTR                7 (IsIconic + NULL|self)
+                LOAD_FAST_BORROW         0 (hwnd)
+                CALL                     1
+                TO_BOOL
+                POP_JUMP_IF_FALSE        3 (to L7)
+        L6:     NOT_TAKEN
+
+ 386            LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 387    L7:     LOAD_GLOBAL              2 (user32)
+                LOAD_ATTR                9 (GetWindowTextLengthW + NULL|self)
+                LOAD_FAST_BORROW         0 (hwnd)
+                CALL                     1
+                STORE_FAST               2 (length)
+
+ 388            LOAD_FAST_BORROW         2 (length)
+                LOAD_SMALL_INT           0
+                COMPARE_OP              58 (bool(<=))
+                POP_JUMP_IF_FALSE        3 (to L9)
+                NOT_TAKEN
+
+ 389    L8:     LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 390    L9:     LOAD_GLOBAL             10 (ctypes)
+                LOAD_ATTR               12 (create_unicode_buffer)
+                PUSH_NULL
+                LOAD_FAST_BORROW         2 (length)
+                LOAD_SMALL_INT           1
+                BINARY_OP                0 (+)
+                CALL                     1
+                STORE_FAST               3 (buf)
+
+ 391            LOAD_GLOBAL              2 (user32)
+                LOAD_ATTR               15 (GetWindowTextW + NULL|self)
+                LOAD_FAST_BORROW_LOAD_FAST_BORROW 3 (hwnd, buf)
+                LOAD_FAST_BORROW         2 (length)
+                LOAD_SMALL_INT           1
+                BINARY_OP                0 (+)
+                CALL                     3
+                POP_TOP
+
+ 392            LOAD_FAST_BORROW         3 (buf)
+                LOAD_ATTR               16 (value)
+                STORE_DEREF              7 (title)
+
+ 393            LOAD_DEREF               7 (title)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L11)
+                NOT_TAKEN
+
+ 394   L10:     LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 395   L11:     LOAD_GLOBAL             18 (any)
+                COPY                     1
+                LOAD_COMMON_CONSTANT     4 (<built-in function any>)
+                IS_OP                    0 (is)
+                POP_JUMP_IF_FALSE       31 (to L18)
+       L12:     NOT_TAKEN
+       L13:     POP_TOP
+                LOAD_FAST_BORROW         7 (title)
+                BUILD_TUPLE              1
+                LOAD_CONST               1 (<code object <genexpr> at 0x107c6ede0, file "winlayer.py", line 395>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                LOAD_DEREF               8 (exclude_titles)
+                GET_ITER
+                CALL                     0
+       L14:     FOR_ITER                12 (to L17)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L16)
+       L15:     NOT_TAKEN
+                JUMP_BACKWARD           11 (to L14)
+       L16:     POP_ITER
+                LOAD_CONST               0 (True)
+                JUMP_FORWARD            20 (to L19)
+       L17:     END_FOR
+                POP_ITER
+                LOAD_CONST               2 (False)
+                JUMP_FORWARD            16 (to L19)
+       L18:     PUSH_NULL
+                LOAD_FAST_BORROW         7 (title)
+                BUILD_TUPLE              1
+                LOAD_CONST               1 (<code object <genexpr> at 0x107c6ede0, file "winlayer.py", line 395>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                LOAD_DEREF               8 (exclude_titles)
+                GET_ITER
+                CALL                     0
+                CALL                     1
+       L19:     TO_BOOL
+                POP_JUMP_IF_FALSE        3 (to L21)
+       L20:     NOT_TAKEN
+
+ 396            LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 398   L21:     LOAD_GLOBAL             20 (wintypes)
+                LOAD_ATTR               23 (RECT + NULL|self)
+                CALL                     0
+                STORE_FAST               4 (rect)
+
+ 399            LOAD_GLOBAL              2 (user32)
+                LOAD_ATTR               25 (GetWindowRect + NULL|self)
+                LOAD_FAST_BORROW         0 (hwnd)
+                LOAD_GLOBAL             10 (ctypes)
+                LOAD_ATTR               26 (byref)
+                PUSH_NULL
+                LOAD_FAST_BORROW         4 (rect)
+                CALL                     1
+                CALL                     2
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L23)
+       L22:     NOT_TAKEN
+
+ 400            LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 401   L23:     LOAD_FAST_BORROW         4 (rect)
+                LOAD_ATTR               28 (right)
+                LOAD_FAST_BORROW         4 (rect)
+                LOAD_ATTR               30 (left)
+                BINARY_OP               10 (-)
+                STORE_FAST               5 (width)
+
+ 402            LOAD_FAST_BORROW         4 (rect)
+                LOAD_ATTR               32 (bottom)
+                LOAD_FAST_BORROW         4 (rect)
+                LOAD_ATTR               34 (top)
+                BINARY_OP               10 (-)
+                STORE_FAST               6 (height)
+
+ 403            LOAD_FAST_BORROW         5 (width)
+                LOAD_SMALL_INT          80
+                COMPARE_OP              18 (bool(<))
+                POP_JUMP_IF_TRUE         8 (to L24)
+                NOT_TAKEN
+                LOAD_FAST_BORROW         6 (height)
+                LOAD_SMALL_INT          40
+                COMPARE_OP              18 (bool(<))
+                POP_JUMP_IF_FALSE        3 (to L25)
+                NOT_TAKEN
+
+ 404   L24:     LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 406   L25:     LOAD_DEREF               9 (ledges)
+                LOAD_ATTR               37 (append + NULL|self)
+
+ 407            LOAD_CONST               3 ('left')
+                LOAD_FAST_BORROW         4 (rect)
+                LOAD_ATTR               30 (left)
+
+ 408            LOAD_CONST               4 ('top')
+                LOAD_FAST_BORROW         4 (rect)
+                LOAD_ATTR               34 (top)
+
+ 409            LOAD_CONST               5 ('right')
+                LOAD_FAST_BORROW         4 (rect)
+                LOAD_ATTR               28 (right)
+
+ 410            LOAD_CONST               6 ('title')
+                LOAD_DEREF               7 (title)
+
+ 406            BUILD_MAP                4
+                CALL                     1
+                POP_TOP
+
+ 414   L26:     LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+  --   L27:     PUSH_EXC_INFO
+
+ 412            LOAD_GLOBAL             38 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L29)
+                NOT_TAKEN
+                POP_TOP
+
+ 413   L28:     POP_EXCEPT
+
+ 414            LOAD_CONST               0 (True)
+                RETURN_VALUE
+
+ 412   L29:     RERAISE                  0
+
+  --   L30:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L27 [0]
+  L3 to L4 -> L27 [0]
+  L5 to L6 -> L27 [0]
+  L7 to L8 -> L27 [0]
+  L9 to L10 -> L27 [0]
+  L11 to L12 -> L27 [0]
+  L13 to L15 -> L27 [0]
+  L16 to L20 -> L27 [0]
+  L21 to L22 -> L27 [0]
+  L23 to L24 -> L27 [0]
+  L25 to L26 -> L27 [0]
+  L27 to L28 -> L30 [1] lasti
+  L29 to L30 -> L30 [1] lasti
+
+==============================================================================
+winlayer.get_window_ledges._cb.<genexpr>   (source line 395, 1 args)
+==============================================================================
+  --           COPY_FREE_VARS           1
+
+ 395           RETURN_GENERATOR
+               POP_TOP
+       L1:     RESUME                   0
+               LOAD_FAST                0 (.0)
+       L2:     FOR_ITER                19 (to L6)
+               STORE_FAST_LOAD_FAST    17 (t, t)
+               COPY                     1
+               TO_BOOL
+               POP_JUMP_IF_FALSE        6 (to L5)
+       L3:     NOT_TAKEN
+       L4:     POP_TOP
+               LOAD_FAST_BORROW         1 (t)
+               LOAD_DEREF               2 (title)
+               CONTAINS_OP              0 (in)
+       L5:     YIELD_VALUE              0
+               RESUME                   5
+               POP_TOP
+               JUMP_BACKWARD           21 (to L2)
+       L6:     END_FOR
+               POP_ITER
+               LOAD_CONST               0 (None)
+               RETURN_VALUE
+
+  --   L7:     CALL_INTRINSIC_1         3 (INTRINSIC_STOPITERATION_ERROR)
+               RERAISE                  1
+ExceptionTable:
+  L1 to L3 -> L7 [0] lasti
+  L4 to L7 -> L7 [0] lasti
+
+==============================================================================
+winlayer._find_defview   (source line 423, 0 args)
+==============================================================================
+  --            MAKE_CELL                4 (result)
+
+ 423            RESUME                   0
+
+ 425            NOP
+
+ 426    L1:     LOAD_GLOBAL              0 (user32)
+                LOAD_ATTR                3 (FindWindowW + NULL|self)
+                LOAD_CONST               1 ('Progman')
+                LOAD_CONST               2 (None)
+                CALL                     2
+                STORE_FAST               0 (progman)
+
+ 427            LOAD_GLOBAL              0 (user32)
+                LOAD_ATTR                5 (FindWindowExW + NULL|self)
+                LOAD_FAST_BORROW         0 (progman)
+                LOAD_CONST               2 (None)
+                LOAD_CONST               3 ('SHELLDLL_DefView')
+                LOAD_CONST               2 (None)
+                CALL                     4
+                STORE_FAST               1 (defview)
+
+ 428            LOAD_FAST_BORROW         1 (defview)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       35 (to L7)
+        L2:     NOT_TAKEN
+
+ 429    L3:     LOAD_GLOBAL              0 (user32)
+                LOAD_ATTR                5 (FindWindowExW + NULL|self)
+                LOAD_FAST_BORROW         1 (defview)
+                LOAD_CONST               2 (None)
+                LOAD_CONST               4 ('SysListView32')
+                LOAD_CONST               2 (None)
+                CALL                     4
+                STORE_FAST               2 (listview)
+
+ 430            LOAD_FAST_BORROW         2 (listview)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        3 (to L7)
+        L4:     NOT_TAKEN
+
+ 431    L5:     LOAD_FAST_BORROW         2 (listview)
+        L6:     RETURN_VALUE
+
+ 433    L7:     LOAD_CONST               5 ('hwnd')
+                LOAD_CONST               2 (None)
+                BUILD_MAP                1
+                STORE_DEREF              4 (result)
+
+ 435            LOAD_GLOBAL              6 (ctypes)
+                LOAD_ATTR                8 (WINFUNCTYPE)
+                PUSH_NULL
+                LOAD_GLOBAL              6 (ctypes)
+                LOAD_ATTR               10 (c_bool)
+                LOAD_GLOBAL             12 (wintypes)
+                LOAD_ATTR               14 (HWND)
+                LOAD_GLOBAL             12 (wintypes)
+                LOAD_ATTR               16 (LPARAM)
+                CALL                     3
+
+ 436            LOAD_FAST_BORROW         4 (result)
+                BUILD_TUPLE              1
+                LOAD_CONST               6 (<code object _cb at 0x107c16bf0, file "winlayer.py", line 435>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+
+ 435            CALL                     0
+
+ 436            STORE_FAST               3 (_cb)
+
+ 448            LOAD_GLOBAL              0 (user32)
+                LOAD_ATTR               19 (EnumWindows + NULL|self)
+                LOAD_FAST_BORROW         3 (_cb)
+                LOAD_SMALL_INT           0
+                CALL                     2
+                POP_TOP
+
+ 449            LOAD_DEREF               4 (result)
+                LOAD_CONST               5 ('hwnd')
+                BINARY_OP               26 ([])
+        L8:     RETURN_VALUE
+
+  --    L9:     PUSH_EXC_INFO
+
+ 450            LOAD_GLOBAL             20 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L11)
+                NOT_TAKEN
+                POP_TOP
+
+ 451   L10:     POP_EXCEPT
+                LOAD_CONST               2 (None)
+                RETURN_VALUE
+
+ 450   L11:     RERAISE                  0
+
+  --   L12:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L9 [0]
+  L3 to L4 -> L9 [0]
+  L5 to L6 -> L9 [0]
+  L7 to L8 -> L9 [0]
+  L9 to L10 -> L12 [1] lasti
+  L11 to L12 -> L12 [1] lasti
+
+==============================================================================
+winlayer._find_defview._cb   (source line 435, 2 args)
+==============================================================================
+  --            COPY_FREE_VARS           1
+
+ 435            RESUME                   0
+
+ 437            NOP
+
+ 438    L1:     LOAD_GLOBAL              0 (user32)
+                LOAD_ATTR                3 (FindWindowExW + NULL|self)
+                LOAD_FAST_BORROW         0 (hwnd)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               1 ('SHELLDLL_DefView')
+                LOAD_CONST               0 (None)
+                CALL                     4
+                STORE_FAST               2 (defview2)
+
+ 439            LOAD_FAST_BORROW         2 (defview2)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       40 (to L7)
+        L2:     NOT_TAKEN
+
+ 440    L3:     LOAD_GLOBAL              0 (user32)
+                LOAD_ATTR                3 (FindWindowExW + NULL|self)
+                LOAD_FAST_BORROW         2 (defview2)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               2 ('SysListView32')
+                LOAD_CONST               0 (None)
+                CALL                     4
+                STORE_FAST               3 (listview2)
+
+ 441            LOAD_FAST_BORROW         3 (listview2)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        8 (to L7)
+        L4:     NOT_TAKEN
+
+ 442    L5:     LOAD_FAST_BORROW         3 (listview2)
+                LOAD_DEREF               4 (result)
+                LOAD_CONST               3 ('hwnd')
+                STORE_SUBSCR
+
+ 443    L6:     LOAD_CONST               4 (False)
+                RETURN_VALUE
+
+ 446    L7:     LOAD_CONST               5 (True)
+                RETURN_VALUE
+
+  --    L8:     PUSH_EXC_INFO
+
+ 444            LOAD_GLOBAL              4 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        5 (to L10)
+                NOT_TAKEN
+                POP_TOP
+
+ 445    L9:     POP_EXCEPT
+
+ 446            LOAD_CONST               5 (True)
+                RETURN_VALUE
+
+ 444   L10:     RERAISE                  0
+
+  --   L11:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L8 [0]
+  L3 to L4 -> L8 [0]
+  L5 to L6 -> L8 [0]
+  L8 to L9 -> L11 [1] lasti
+  L10 to L11 -> L11 [1] lasti
+
+==============================================================================
+winlayer.get_desktop_icon_positions   (source line 454, 1 args)
+==============================================================================
+ 454            RESUME                   0
+
+ 456            LOAD_GLOBAL              0 (IS_WINDOWS)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L1)
+                NOT_TAKEN
+
+ 457            BUILD_LIST               0
+                RETURN_VALUE
+
+ 459    L1:     NOP
+
+ 460    L2:     LOAD_GLOBAL              3 (_find_defview + NULL)
+                CALL                     0
+                STORE_FAST               1 (listview)
+
+ 461            LOAD_FAST_BORROW         1 (listview)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L4)
+                NOT_TAKEN
+
+ 462            BUILD_LIST               0
+        L3:     RETURN_VALUE
+
+ 464    L4:     LOAD_GLOBAL              4 (user32)
+                LOAD_ATTR                7 (SendMessageW + NULL|self)
+                LOAD_FAST_BORROW         1 (listview)
+                LOAD_GLOBAL              8 (LVM_GETITEMCOUNT)
+                LOAD_SMALL_INT           0
+                LOAD_SMALL_INT           0
+                CALL                     4
+                STORE_FAST               2 (count)
+
+ 465            LOAD_FAST_BORROW         2 (count)
+                LOAD_SMALL_INT           0
+                COMPARE_OP              58 (bool(<=))
+                POP_JUMP_IF_FALSE        3 (to L6)
+                NOT_TAKEN
+
+ 466            BUILD_LIST               0
+        L5:     RETURN_VALUE
+
+ 467    L6:     LOAD_GLOBAL             11 (min + NULL)
+                LOAD_FAST_BORROW_LOAD_FAST_BORROW 32 (count, max_icons)
+                CALL                     2
+                STORE_FAST               2 (count)
+
+ 469            LOAD_GLOBAL             12 (wintypes)
+                LOAD_ATTR               15 (DWORD + NULL|self)
+                CALL                     0
+                STORE_FAST               3 (pid)
+
+ 470            LOAD_GLOBAL              4 (user32)
+                LOAD_ATTR               17 (GetWindowThreadProcessId + NULL|self)
+                LOAD_FAST_BORROW         1 (listview)
+                LOAD_GLOBAL             18 (ctypes)
+                LOAD_ATTR               20 (byref)
+                PUSH_NULL
+                LOAD_FAST_BORROW         3 (pid)
+                CALL                     1
+                CALL                     2
+                POP_TOP
+
+ 471            LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               25 (OpenProcess + NULL|self)
+
+ 472            LOAD_GLOBAL             26 (PROCESS_VM_OPERATION)
+                LOAD_GLOBAL             28 (PROCESS_VM_READ)
+                BINARY_OP                7 (|)
+                LOAD_GLOBAL             30 (PROCESS_VM_WRITE)
+                BINARY_OP                7 (|)
+
+ 473            LOAD_CONST               1 (False)
+                LOAD_FAST_BORROW         3 (pid)
+                LOAD_ATTR               32 (value)
+
+ 471            CALL                     3
+                STORE_FAST               4 (h_process)
+
+ 475            LOAD_FAST_BORROW         4 (h_process)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L8)
+                NOT_TAKEN
+
+ 476            BUILD_LIST               0
+        L7:     RETURN_VALUE
+
+ 478    L8:     NOP
+
+ 479    L9:     LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               35 (VirtualAllocEx + NULL|self)
+
+ 480            LOAD_FAST_BORROW         4 (h_process)
+                LOAD_CONST               2 (None)
+                LOAD_SMALL_INT           8
+                LOAD_GLOBAL             36 (MEM_COMMIT)
+                LOAD_GLOBAL             38 (MEM_RESERVE)
+                BINARY_OP                7 (|)
+                LOAD_GLOBAL             40 (PAGE_READWRITE)
+
+ 479            CALL                     5
+                STORE_FAST               5 (remote_buf)
+
+ 482            LOAD_FAST_BORROW         5 (remote_buf)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        24 (to L14)
+       L10:     NOT_TAKEN
+
+ 483   L11:     BUILD_LIST               0
+
+ 506   L12:     LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               43 (CloseHandle + NULL|self)
+                LOAD_FAST_BORROW         4 (h_process)
+                CALL                     1
+                POP_TOP
+       L13:     RETURN_VALUE
+
+ 485   L14:     BUILD_LIST               0
+                STORE_FAST               6 (positions)
+
+ 486            LOAD_GLOBAL             18 (ctypes)
+                LOAD_ATTR               44 (create_string_buffer)
+                PUSH_NULL
+                LOAD_SMALL_INT           8
+                CALL                     1
+                STORE_FAST               7 (local_buf)
+
+ 487            LOAD_GLOBAL             18 (ctypes)
+                LOAD_ATTR               46 (c_size_t)
+                PUSH_NULL
+                LOAD_SMALL_INT           0
+                CALL                     1
+                STORE_FAST               8 (bytes_read)
+
+ 489   L15:     NOP
+
+ 490   L16:     LOAD_GLOBAL             49 (range + NULL)
+                LOAD_FAST_BORROW         2 (count)
+                CALL                     1
+                GET_ITER
+       L17:     FOR_ITER               221 (to L19)
+                STORE_FAST               9 (i)
+
+ 491            LOAD_GLOBAL              4 (user32)
+                LOAD_ATTR                7 (SendMessageW + NULL|self)
+                LOAD_FAST_BORROW         1 (listview)
+                LOAD_GLOBAL             50 (LVM_GETITEMPOSITION)
+                LOAD_FAST_BORROW_LOAD_FAST_BORROW 149 (i, remote_buf)
+                CALL                     4
+                POP_TOP
+
+ 492            LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               53 (ReadProcessMemory + NULL|self)
+
+ 493            LOAD_FAST_BORROW_LOAD_FAST_BORROW 69 (h_process, remote_buf)
+                LOAD_FAST_BORROW         7 (local_buf)
+                LOAD_SMALL_INT           8
+                LOAD_GLOBAL             18 (ctypes)
+                LOAD_ATTR               20 (byref)
+                PUSH_NULL
+                LOAD_FAST_BORROW         8 (bytes_read)
+                CALL                     1
+
+ 492            CALL                     5
+                STORE_FAST              10 (ok)
+
+ 495            LOAD_FAST_BORROW        10 (ok)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L18)
+                NOT_TAKEN
+
+ 496            JUMP_BACKWARD           84 (to L17)
+
+ 497   L18:     LOAD_GLOBAL             54 (struct)
+                LOAD_ATTR               56 (unpack)
+                PUSH_NULL
+                LOAD_CONST               3 ('ll')
+                LOAD_FAST_BORROW         7 (local_buf)
+                LOAD_ATTR               58 (raw)
+                CALL                     2
+                UNPACK_SEQUENCE          2
+                STORE_FAST_STORE_FAST  188 (x, y)
+
+ 498            LOAD_GLOBAL             12 (wintypes)
+                LOAD_ATTR               61 (POINT + NULL|self)
+                LOAD_FAST_BORROW_LOAD_FAST_BORROW 188 (x, y)
+                CALL                     2
+                STORE_FAST              13 (pt)
+
+ 499            LOAD_GLOBAL              4 (user32)
+                LOAD_ATTR               63 (ClientToScreen + NULL|self)
+                LOAD_FAST_BORROW         1 (listview)
+                LOAD_GLOBAL             18 (ctypes)
+                LOAD_ATTR               20 (byref)
+                PUSH_NULL
+                LOAD_FAST_BORROW        13 (pt)
+                CALL                     1
+                CALL                     2
+                POP_TOP
+
+ 500            LOAD_FAST_BORROW         6 (positions)
+                LOAD_ATTR               65 (append + NULL|self)
+                LOAD_FAST_BORROW        13 (pt)
+                LOAD_ATTR               66 (x)
+                LOAD_FAST_BORROW        13 (pt)
+                LOAD_ATTR               68 (y)
+                BUILD_TUPLE              2
+                CALL                     1
+                POP_TOP
+                JUMP_BACKWARD          223 (to L17)
+
+ 490   L19:     END_FOR
+                POP_ITER
+
+ 502   L20:     LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               71 (VirtualFreeEx + NULL|self)
+                LOAD_FAST_BORROW_LOAD_FAST_BORROW 69 (h_process, remote_buf)
+                LOAD_SMALL_INT           0
+                LOAD_GLOBAL             72 (MEM_RELEASE)
+                CALL                     4
+                POP_TOP
+
+ 504            LOAD_FAST_BORROW         6 (positions)
+
+ 506   L21:     LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               43 (CloseHandle + NULL|self)
+                LOAD_FAST_BORROW         4 (h_process)
+                CALL                     1
+                POP_TOP
+       L22:     RETURN_VALUE
+
+  --   L23:     PUSH_EXC_INFO
+
+ 502            LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               71 (VirtualFreeEx + NULL|self)
+                LOAD_FAST_LOAD_FAST     69 (h_process, remote_buf)
+                LOAD_SMALL_INT           0
+                LOAD_GLOBAL             72 (MEM_RELEASE)
+                CALL                     4
+                POP_TOP
+                RERAISE                  0
+
+  --   L24:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L25:     PUSH_EXC_INFO
+
+ 506            LOAD_GLOBAL             22 (kernel32)
+                LOAD_ATTR               43 (CloseHandle + NULL|self)
+                LOAD_FAST                4 (h_process)
+                CALL                     1
+                POP_TOP
+                RERAISE                  0
+
+  --   L26:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L27:     PUSH_EXC_INFO
+
+ 507            LOAD_GLOBAL             74 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        6 (to L29)
+                NOT_TAKEN
+                POP_TOP
+
+ 508            BUILD_LIST               0
+                SWAP                     2
+       L28:     POP_EXCEPT
+                RETURN_VALUE
+
+ 507   L29:     RERAISE                  0
+
+  --   L30:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L2 to L3 -> L27 [0]
+  L4 to L5 -> L27 [0]
+  L6 to L7 -> L27 [0]
+  L9 to L10 -> L25 [0]
+  L11 to L12 -> L25 [0]
+  L12 to L13 -> L27 [0]
+  L14 to L15 -> L25 [0]
+  L16 to L20 -> L23 [0]
+  L20 to L21 -> L25 [0]
+  L21 to L22 -> L27 [0]
+  L23 to L24 -> L24 [1] lasti
+  L24 to L25 -> L25 [0]
+  L25 to L26 -> L26 [1] lasti
+  L26 to L27 -> L27 [0]
+  L27 to L28 -> L30 [1] lasti
+  L29 to L30 -> L30 [1] lasti

@@ -1,0 +1,17 @@
+ok       line      1    541 lines  module
+ok       line     70      8 lines  module._FLASHWINFO
+ok       line    115      7 lines  module.MONITORINFO
+ok       line    148     15 lines  module.set_dpi_aware
+ok       line    186     17 lines  module.flash_taskbar
+ok       line    214     17 lines  module.stop_taskbar_flash
+ok       line    245     24 lines  module.hide_window_from_taskbar
+ok       line    273     13 lines  module.get_virtual_screen_rect
+ok       line    291     34 lines  module.get_secondary_monitor_rect
+ok       line    300     14 lines  module.get_secondary_monitor_rect._cb
+ok       line    326     13 lines  module.acquire_single_instance_lock
+ok       line    350     15 lines  module.get_taskbar_rect
+ok       line    366     38 lines  module.get_window_ledges
+ok       line    378     46 lines  module.get_window_ledges._cb
+ok       line    423     26 lines  module._find_defview
+ok       line    435     14 lines  module._find_defview._cb
+ok       line    454     61 lines  module.get_desktop_icon_positions

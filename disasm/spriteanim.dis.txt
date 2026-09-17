@@ -1,0 +1,953 @@
+
+==============================================================================
+spriteanim   (source line 1, 0 args)
+==============================================================================
+  0           RESUME                   0
+
+  3           LOAD_CONST               0 ('\nspriteanim.py\nPMD(포켓몬 불가사의 던전) 스타일 스프라이트시트에서 방향/프레임별 이미지를 잘라내는 엔진.\n\n폴더 구조 (포켓몬 한 종당 하나):\n    assets/sprites/<species>/AnimData.xml\n    assets/sprites/<species>/<ActionName>-Anim.png\n\nAnimData.xml 안의 각 <Anim>은 FrameWidth/FrameHeight/Durations 를 갖고,\n이미지 파일은 가로= 프레임 수, 세로 = 방향 수(보통 8, 없으면 1)로 배치된 그리드.\n방향 순서(8방향 기준): 아래,아래오른쪽,오른쪽,위오른쪽,위,위왼쪽,왼쪽,아래왼쪽\n')
+              STORE_NAME               0 (__doc__)
+
+ 16           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              1 (os)
+              STORE_NAME               1 (os)
+
+ 17           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              2 (xml.etree.ElementTree)
+              IMPORT_FROM              3 (etree)
+              SWAP                     2
+              POP_TOP
+              IMPORT_FROM              4 (ElementTree)
+              STORE_NAME               5 (ET)
+              POP_TOP
+
+ 18           LOAD_SMALL_INT           0
+              LOAD_CONST               2 (('Image',))
+              IMPORT_NAME              6 (PIL)
+              IMPORT_FROM              7 (Image)
+              STORE_NAME               7 (Image)
+              POP_TOP
+
+ 21           LOAD_SMALL_INT           0
+              STORE_NAME               8 (DIR_DOWN)
+
+ 22           LOAD_SMALL_INT           1
+              STORE_NAME               9 (DIR_DOWN_RIGHT)
+
+ 23           LOAD_SMALL_INT           2
+              STORE_NAME              10 (DIR_RIGHT)
+
+ 24           LOAD_SMALL_INT           3
+              STORE_NAME              11 (DIR_UP_RIGHT)
+
+ 25           LOAD_SMALL_INT           4
+              STORE_NAME              12 (DIR_UP)
+
+ 26           LOAD_SMALL_INT           5
+              STORE_NAME              13 (DIR_UP_LEFT)
+
+ 27           LOAD_SMALL_INT           6
+              STORE_NAME              14 (DIR_LEFT)
+
+ 28           LOAD_SMALL_INT           7
+              STORE_NAME              15 (DIR_DOWN_LEFT)
+
+ 30           LOAD_SMALL_INT           8
+              STORE_NAME              16 (_DIR_COUNT)
+
+ 33           LOAD_BUILD_CLASS
+              PUSH_NULL
+              LOAD_CONST               3 (<code object AnimInfo at 0x1079dede0, file "spriteanim.py", line 33>)
+              MAKE_FUNCTION
+              LOAD_CONST               4 ('AnimInfo')
+              CALL                     2
+              STORE_NAME              17 (AnimInfo)
+
+ 48           LOAD_BUILD_CLASS
+              PUSH_NULL
+              LOAD_CONST               5 (<code object AnimSet at 0x1079c1e90, file "spriteanim.py", line 48>)
+              MAKE_FUNCTION
+              LOAD_CONST               6 ('AnimSet')
+              CALL                     2
+              STORE_NAME              18 (AnimSet)
+              LOAD_CONST               1 (None)
+              RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimInfo   (source line 33, 0 args)
+==============================================================================
+  --           MAKE_CELL                0 (__classdict__)
+
+  33           RESUME                   0
+               LOAD_NAME                0 (__name__)
+               STORE_NAME               1 (__module__)
+               LOAD_CONST               0 ('AnimInfo')
+               STORE_NAME               2 (__qualname__)
+               LOAD_SMALL_INT          33
+               STORE_NAME               3 (__firstlineno__)
+               LOAD_LOCALS
+               STORE_DEREF              0 (__classdict__)
+
+  34           LOAD_CONST               5 (('name', 'frame_w', 'frame_h', 'durations', 'n_dirs'))
+               STORE_NAME               4 (__slots__)
+
+  36           LOAD_CONST               1 (<code object __init__ at 0x1079c3870, file "spriteanim.py", line 36>)
+               MAKE_FUNCTION
+               STORE_NAME               5 (__init__)
+
+  43           LOAD_NAME                6 (property)
+
+  44           LOAD_CONST               2 (<code object n_frames at 0x10799cb30, file "spriteanim.py", line 43>)
+               MAKE_FUNCTION
+
+  43           CALL                     0
+
+  44           STORE_NAME               7 (n_frames)
+               LOAD_CONST               3 (('durations', 'frame_h', 'frame_w', 'n_dirs', 'name'))
+               STORE_NAME               8 (__static_attributes__)
+               LOAD_FAST_BORROW         0 (__classdict__)
+               STORE_NAME               9 (__classdictcell__)
+               LOAD_CONST               4 (None)
+               RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimInfo.__init__   (source line 36, 6 args)
+==============================================================================
+ 36           RESUME                   0
+
+ 37           LOAD_FAST_BORROW_LOAD_FAST_BORROW 16 (name, self)
+              STORE_ATTR               0 (name)
+
+ 38           LOAD_FAST_BORROW_LOAD_FAST_BORROW 32 (frame_w, self)
+              STORE_ATTR               1 (frame_w)
+
+ 39           LOAD_FAST_BORROW_LOAD_FAST_BORROW 48 (frame_h, self)
+              STORE_ATTR               2 (frame_h)
+
+ 40           LOAD_FAST_BORROW_LOAD_FAST_BORROW 64 (durations, self)
+              STORE_ATTR               3 (durations)
+
+ 41           LOAD_FAST_BORROW_LOAD_FAST_BORROW 80 (n_dirs, self)
+              STORE_ATTR               4 (n_dirs)
+              LOAD_CONST               0 (None)
+              RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimInfo.n_frames   (source line 43, 1 args)
+==============================================================================
+ 43           RESUME                   0
+
+ 45           LOAD_GLOBAL              1 (len + NULL)
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                2 (durations)
+              CALL                     1
+              RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimSet   (source line 48, 0 args)
+==============================================================================
+  --           MAKE_CELL                0 (__classdict__)
+
+  48           RESUME                   0
+               LOAD_NAME                0 (__name__)
+               STORE_NAME               1 (__module__)
+               LOAD_CONST               0 ('AnimSet')
+               STORE_NAME               2 (__qualname__)
+               LOAD_SMALL_INT          48
+               STORE_NAME               3 (__firstlineno__)
+               LOAD_LOCALS
+               STORE_DEREF              0 (__classdict__)
+
+  49           LOAD_CONST               1 ('포켓몬 한 종 폴더 전체를 로드해서 프레임 이미지를 제공.')
+               STORE_NAME               4 (__doc__)
+
+  51           LOAD_CONST               2 (<code object __init__ at 0x7bf27b200, file "spriteanim.py", line 51>)
+               MAKE_FUNCTION
+               STORE_NAME               5 (__init__)
+
+ 146           LOAD_CONST               3 (<code object has at 0x10791ed30, file "spriteanim.py", line 146>)
+               MAKE_FUNCTION
+               STORE_NAME               6 (has)
+
+ 149           LOAD_CONST               4 (<code object info at 0x107a648b0, file "spriteanim.py", line 149>)
+               MAKE_FUNCTION
+               STORE_NAME               7 (info)
+
+ 152           LOAD_NAME                8 (DIR_DOWN)
+               BUILD_TUPLE              1
+               LOAD_CONST               5 (<code object frame at 0x7bf2c0700, file "spriteanim.py", line 152>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   1 (defaults)
+               STORE_NAME               9 (frame)
+
+ 185           LOAD_CONST               6 (<code object duration_of at 0x10288bb20, file "spriteanim.py", line 185>)
+               MAKE_FUNCTION
+               STORE_NAME              10 (duration_of)
+
+ 194           LOAD_CONST               7 (<code object n_frames at 0x1079274b0, file "spriteanim.py", line 194>)
+               MAKE_FUNCTION
+               STORE_NAME              11 (n_frames)
+               LOAD_CONST               8 (('_frame_cache', 'anims', 'folder', 'sheets'))
+               STORE_NAME              12 (__static_attributes__)
+               LOAD_FAST_BORROW         0 (__classdict__)
+               STORE_NAME              13 (__classdictcell__)
+               LOAD_CONST               9 (None)
+               RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimSet.__init__   (source line 51, 2 args)
+==============================================================================
+  --            MAKE_CELL                1 (folder)
+                MAKE_CELL               26 (_resolve_source)
+                MAKE_CELL               27 (raw)
+
+  51            RESUME                   0
+
+  52            LOAD_DEREF               1 (folder)
+                LOAD_FAST_BORROW         0 (self)
+                STORE_ATTR               0 (folder)
+
+  53            BUILD_MAP                0
+                LOAD_FAST_BORROW         0 (self)
+                STORE_ATTR               1 (anims)
+
+  54            BUILD_MAP                0
+                LOAD_FAST_BORROW         0 (self)
+                STORE_ATTR               2 (sheets)
+
+  55            BUILD_MAP                0
+                LOAD_FAST_BORROW         0 (self)
+                STORE_ATTR               3 (_frame_cache)
+
+  57            LOAD_GLOBAL              8 (os)
+                LOAD_ATTR               10 (path)
+                LOAD_ATTR               13 (join + NULL|self)
+                LOAD_DEREF               1 (folder)
+                LOAD_CONST               0 ('AnimData.xml')
+                CALL                     2
+                STORE_FAST               2 (xml_path)
+
+  58            LOAD_GLOBAL             14 (ET)
+                LOAD_ATTR               16 (parse)
+                PUSH_NULL
+                LOAD_FAST_BORROW         2 (xml_path)
+                CALL                     1
+                STORE_FAST               3 (tree)
+
+  59            LOAD_FAST_BORROW         3 (tree)
+                LOAD_ATTR               19 (getroot + NULL|self)
+                CALL                     0
+                STORE_FAST               4 (root)
+
+  61            LOAD_FAST_BORROW         4 (root)
+                LOAD_ATTR               21 (find + NULL|self)
+                LOAD_CONST               1 ('Anims')
+                CALL                     1
+                STORE_FAST               5 (anims_node)
+
+  62            LOAD_FAST_BORROW         5 (anims_node)
+                POP_JUMP_IF_NOT_NONE     3 (to L1)
+                NOT_TAKEN
+
+  63            LOAD_FAST                4 (root)
+                STORE_FAST               5 (anims_node)
+
+  72    L1:     BUILD_MAP                0
+                STORE_DEREF             27 (raw)
+
+  73            BUILD_LIST               0
+                STORE_FAST               6 (order)
+
+  74            LOAD_FAST_BORROW         5 (anims_node)
+                LOAD_ATTR               23 (findall + NULL|self)
+                LOAD_CONST               3 ('Anim')
+                CALL                     1
+                GET_ITER
+        L2:     EXTENDED_ARG             1
+                FOR_ITER               386 (to L16)
+                STORE_FAST               7 (anim_node)
+
+  75            LOAD_FAST_BORROW         7 (anim_node)
+                LOAD_ATTR               21 (find + NULL|self)
+                LOAD_CONST               4 ('Name')
+                CALL                     1
+                STORE_FAST               8 (name_node)
+
+  76            LOAD_FAST_BORROW         8 (name_node)
+                POP_JUMP_IF_NONE        19 (to L3)
+                NOT_TAKEN
+                LOAD_FAST_BORROW         8 (name_node)
+                LOAD_ATTR               24 (text)
+                TO_BOOL
+                POP_JUMP_IF_TRUE         3 (to L4)
+                NOT_TAKEN
+
+  77    L3:     JUMP_BACKWARD           45 (to L2)
+
+  78    L4:     LOAD_FAST_BORROW         8 (name_node)
+                LOAD_ATTR               24 (text)
+                LOAD_ATTR               27 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST               9 (name)
+
+  80            LOAD_FAST_BORROW         7 (anim_node)
+                LOAD_ATTR               21 (find + NULL|self)
+                LOAD_CONST               5 ('CopyOf')
+                CALL                     1
+                STORE_FAST              10 (copy_node)
+
+  81            LOAD_FAST_BORROW        10 (copy_node)
+                POP_JUMP_IF_NONE        45 (to L5)
+                NOT_TAKEN
+                LOAD_FAST_BORROW        10 (copy_node)
+                LOAD_ATTR               24 (text)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       27 (to L5)
+                NOT_TAKEN
+                LOAD_FAST_BORROW        10 (copy_node)
+                LOAD_ATTR               24 (text)
+                LOAD_ATTR               27 (strip + NULL|self)
+                CALL                     0
+                JUMP_FORWARD             1 (to L6)
+        L5:     LOAD_CONST               2 (None)
+        L6:     STORE_FAST              11 (copy_of)
+
+  83            LOAD_FAST_BORROW         7 (anim_node)
+                LOAD_ATTR               21 (find + NULL|self)
+                LOAD_CONST               6 ('FrameWidth')
+                CALL                     1
+                STORE_FAST              12 (fw_node)
+
+  84            LOAD_FAST_BORROW         7 (anim_node)
+                LOAD_ATTR               21 (find + NULL|self)
+                LOAD_CONST               7 ('FrameHeight')
+                CALL                     1
+                STORE_FAST              13 (fh_node)
+
+  85            LOAD_FAST_BORROW        12 (fw_node)
+                POP_JUMP_IF_NONE        40 (to L7)
+                NOT_TAKEN
+                LOAD_FAST_BORROW        12 (fw_node)
+                LOAD_ATTR               24 (text)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       22 (to L7)
+                NOT_TAKEN
+                LOAD_GLOBAL             29 (int + NULL)
+                LOAD_FAST_BORROW        12 (fw_node)
+                LOAD_ATTR               24 (text)
+                CALL                     1
+                JUMP_FORWARD             1 (to L8)
+        L7:     LOAD_CONST               2 (None)
+        L8:     STORE_FAST              14 (frame_w)
+
+  86            LOAD_FAST_BORROW        13 (fh_node)
+                POP_JUMP_IF_NONE        40 (to L9)
+                NOT_TAKEN
+                LOAD_FAST_BORROW        13 (fh_node)
+                LOAD_ATTR               24 (text)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       22 (to L9)
+                NOT_TAKEN
+                LOAD_GLOBAL             29 (int + NULL)
+                LOAD_FAST_BORROW        13 (fh_node)
+                LOAD_ATTR               24 (text)
+                CALL                     1
+                JUMP_FORWARD             1 (to L10)
+        L9:     LOAD_CONST               2 (None)
+       L10:     STORE_FAST              15 (frame_h)
+
+  88            BUILD_LIST               0
+                STORE_FAST              16 (durations)
+
+  89            LOAD_FAST_BORROW         7 (anim_node)
+                LOAD_ATTR               21 (find + NULL|self)
+                LOAD_CONST               8 ('Durations')
+                CALL                     1
+                STORE_FAST              17 (dur_parent)
+
+  90            LOAD_FAST_BORROW        17 (dur_parent)
+                POP_JUMP_IF_NONE        72 (to L15)
+                NOT_TAKEN
+
+  91            LOAD_FAST_BORROW        17 (dur_parent)
+                LOAD_ATTR               23 (findall + NULL|self)
+                LOAD_CONST               9 ('Duration')
+                CALL                     1
+                GET_ITER
+       L11:     FOR_ITER                50 (to L14)
+                STORE_FAST              18 (d)
+
+  92            NOP
+
+  93   L12:     LOAD_FAST_BORROW        16 (durations)
+                LOAD_ATTR               31 (append + NULL|self)
+                LOAD_GLOBAL             33 (max + NULL)
+                LOAD_SMALL_INT           1
+                LOAD_GLOBAL             29 (int + NULL)
+                LOAD_FAST_BORROW        18 (d)
+                LOAD_ATTR               24 (text)
+                CALL                     1
+                CALL                     2
+                CALL                     1
+                POP_TOP
+       L13:     JUMP_BACKWARD           52 (to L11)
+
+  91   L14:     END_FOR
+                POP_ITER
+
+  97   L15:     LOAD_CONST              10 ('copy_of')
+                LOAD_FAST_BORROW        11 (copy_of)
+                LOAD_CONST              11 ('frame_w')
+                LOAD_FAST_BORROW        14 (frame_w)
+                LOAD_CONST              12 ('frame_h')
+                LOAD_FAST_BORROW        15 (frame_h)
+                LOAD_CONST              13 ('durations')
+                LOAD_FAST_BORROW        16 (durations)
+                BUILD_MAP                4
+                LOAD_DEREF              27 (raw)
+                LOAD_FAST_BORROW         9 (name)
+                STORE_SUBSCR
+
+  98            LOAD_FAST_BORROW         6 (order)
+                LOAD_ATTR               31 (append + NULL|self)
+                LOAD_FAST_BORROW         9 (name)
+                CALL                     1
+                POP_TOP
+                EXTENDED_ARG             1
+                JUMP_BACKWARD          389 (to L2)
+
+  74   L16:     END_FOR
+                POP_ITER
+
+ 100            LOAD_CONST              17 ((None,))
+                LOAD_FAST_BORROW        26 (_resolve_source)
+                LOAD_FAST_BORROW         1 (folder)
+                LOAD_FAST_BORROW        27 (raw)
+                BUILD_TUPLE              3
+                LOAD_CONST              14 (<code object _resolve_source at 0x7bf2dc280, file "spriteanim.py", line 100>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                SET_FUNCTION_ATTRIBUTE   1 (defaults)
+                STORE_DEREF             26 (_resolve_source)
+
+ 115            LOAD_FAST_BORROW         6 (order)
+                GET_ITER
+       L17:     EXTENDED_ARG             1
+                FOR_ITER               391 (to L28)
+                STORE_FAST               9 (name)
+
+ 116            LOAD_DEREF              27 (raw)
+                LOAD_FAST_BORROW         9 (name)
+                BINARY_OP               26 ([])
+                STORE_FAST              19 (info)
+
+ 117            LOAD_DEREF              26 (_resolve_source)
+                PUSH_NULL
+                LOAD_FAST_BORROW         9 (name)
+                CALL                     1
+                STORE_FAST              20 (src_name)
+
+ 118            LOAD_FAST_BORROW        20 (src_name)
+                POP_JUMP_IF_NOT_NONE     3 (to L18)
+                NOT_TAKEN
+
+ 120            JUMP_BACKWARD           27 (to L17)
+
+ 122   L18:     LOAD_DEREF              27 (raw)
+                LOAD_ATTR               39 (get + NULL|self)
+                LOAD_FAST_BORROW        20 (src_name)
+                LOAD_FAST_BORROW        19 (info)
+                CALL                     2
+                STORE_FAST              21 (src_info)
+
+ 123            LOAD_FAST_BORROW        19 (info)
+                LOAD_CONST              11 ('frame_w')
+                BINARY_OP               26 ([])
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE        18 (to L19)
+                NOT_TAKEN
+                POP_TOP
+                LOAD_FAST_BORROW        21 (src_info)
+                LOAD_ATTR               39 (get + NULL|self)
+                LOAD_CONST              11 ('frame_w')
+                CALL                     1
+       L19:     STORE_FAST              14 (frame_w)
+
+ 124            LOAD_FAST_BORROW        19 (info)
+                LOAD_CONST              12 ('frame_h')
+                BINARY_OP               26 ([])
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE        18 (to L20)
+                NOT_TAKEN
+                POP_TOP
+                LOAD_FAST_BORROW        21 (src_info)
+                LOAD_ATTR               39 (get + NULL|self)
+                LOAD_CONST              12 ('frame_h')
+                CALL                     1
+       L20:     STORE_FAST              15 (frame_h)
+
+ 125            LOAD_FAST_BORROW        19 (info)
+                LOAD_CONST              13 ('durations')
+                BINARY_OP               26 ([])
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE        29 (to L21)
+                NOT_TAKEN
+                POP_TOP
+                LOAD_FAST_BORROW        21 (src_info)
+                LOAD_ATTR               39 (get + NULL|self)
+                LOAD_CONST              13 ('durations')
+                CALL                     1
+                COPY                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE         4 (to L21)
+                NOT_TAKEN
+                POP_TOP
+                LOAD_SMALL_INT           4
+                BUILD_LIST               1
+       L21:     STORE_FAST              16 (durations)
+
+ 126            LOAD_FAST_BORROW        14 (frame_w)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       23 (to L22)
+                NOT_TAKEN
+                LOAD_FAST_BORROW        15 (frame_h)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       15 (to L22)
+                NOT_TAKEN
+                LOAD_FAST_BORROW        14 (frame_w)
+                LOAD_SMALL_INT           0
+                COMPARE_OP              58 (bool(<=))
+                POP_JUMP_IF_TRUE         8 (to L22)
+                NOT_TAKEN
+                LOAD_FAST_BORROW        15 (frame_h)
+                LOAD_SMALL_INT           0
+                COMPARE_OP              58 (bool(<=))
+                POP_JUMP_IF_FALSE        3 (to L23)
+                NOT_TAKEN
+
+ 127   L22:     JUMP_BACKWARD          190 (to L17)
+
+ 129   L23:     LOAD_FAST_BORROW        20 (src_name)
+                LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                4 (sheets)
+                CONTAINS_OP              0 (in)
+                POP_JUMP_IF_FALSE       21 (to L24)
+                NOT_TAKEN
+
+ 130            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                4 (sheets)
+                LOAD_FAST_BORROW        20 (src_name)
+                BINARY_OP               26 ([])
+                STORE_FAST              22 (img)
+                JUMP_FORWARD            71 (to L26)
+
+ 132   L24:     NOP
+
+ 133   L25:     LOAD_GLOBAL             40 (Image)
+                LOAD_ATTR               42 (open)
+                PUSH_NULL
+                LOAD_GLOBAL              8 (os)
+                LOAD_ATTR               10 (path)
+                LOAD_ATTR               13 (join + NULL|self)
+                LOAD_DEREF               1 (folder)
+                LOAD_FAST_BORROW        20 (src_name)
+                FORMAT_SIMPLE
+                LOAD_CONST              15 ('-Anim.png')
+                BUILD_STRING             2
+                CALL                     2
+                CALL                     1
+                LOAD_ATTR               45 (convert + NULL|self)
+                LOAD_CONST              16 ('RGBA')
+                CALL                     1
+                STORE_FAST              22 (img)
+
+ 137   L26:     LOAD_FAST_BORROW        22 (img)
+                LOAD_ATTR               48 (size)
+                UNPACK_SEQUENCE          2
+                STORE_FAST              23 (sheet_w)
+                STORE_FAST              24 (sheet_h)
+
+ 139            LOAD_GLOBAL             33 (max + NULL)
+                LOAD_SMALL_INT           1
+                LOAD_FAST_BORROW        24 (sheet_h)
+                LOAD_FAST_BORROW        15 (frame_h)
+                BINARY_OP                2 (//)
+                CALL                     2
+                STORE_FAST              25 (n_dirs)
+
+ 140            LOAD_FAST_BORROW        25 (n_dirs)
+                LOAD_GLOBAL             50 (_DIR_COUNT)
+                COMPARE_OP             148 (bool(>))
+                POP_JUMP_IF_FALSE        7 (to L27)
+                NOT_TAKEN
+
+ 141            LOAD_GLOBAL             50 (_DIR_COUNT)
+                STORE_FAST              25 (n_dirs)
+
+ 143   L27:     LOAD_GLOBAL             53 (AnimInfo + NULL)
+                LOAD_FAST_BORROW_LOAD_FAST_BORROW 158 (name, frame_w)
+                LOAD_FAST_BORROW        15 (frame_h)
+                LOAD_FAST_BORROW        16 (durations)
+                LOAD_FAST_BORROW        25 (n_dirs)
+                CALL                     5
+                LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                2 (anims)
+                LOAD_FAST_BORROW         9 (name)
+                STORE_SUBSCR
+
+ 144            LOAD_FAST_BORROW        22 (img)
+                LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                4 (sheets)
+                LOAD_FAST_BORROW         9 (name)
+                STORE_SUBSCR
+                EXTENDED_ARG             1
+                JUMP_BACKWARD          394 (to L17)
+
+ 115   L28:     END_FOR
+                POP_ITER
+                LOAD_CONST               2 (None)
+                RETURN_VALUE
+
+  --   L29:     PUSH_EXC_INFO
+
+  94            LOAD_GLOBAL             34 (TypeError)
+                LOAD_GLOBAL             36 (ValueError)
+                BUILD_TUPLE              2
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE       23 (to L31)
+                NOT_TAKEN
+                POP_TOP
+
+  95            LOAD_FAST               16 (durations)
+                LOAD_ATTR               31 (append + NULL|self)
+                LOAD_SMALL_INT           4
+                CALL                     1
+                POP_TOP
+       L30:     POP_EXCEPT
+                EXTENDED_ARG             2
+                JUMP_BACKWARD          537 (to L11)
+
+  94   L31:     RERAISE                  0
+
+  --   L32:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L33:     PUSH_EXC_INFO
+
+ 134            LOAD_GLOBAL             46 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE        6 (to L35)
+                NOT_TAKEN
+                POP_TOP
+
+ 135   L34:     POP_EXCEPT
+                EXTENDED_ARG             1
+                JUMP_BACKWARD          455 (to L17)
+
+ 134   L35:     RERAISE                  0
+
+  --   L36:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L12 to L13 -> L29 [2]
+  L25 to L26 -> L33 [1]
+  L29 to L30 -> L32 [3] lasti
+  L31 to L32 -> L32 [3] lasti
+  L33 to L34 -> L36 [2] lasti
+  L35 to L36 -> L36 [2] lasti
+
+==============================================================================
+spriteanim.AnimSet.__init__._resolve_source   (source line 100, 2 args)
+==============================================================================
+  --           COPY_FREE_VARS           3
+
+ 100           RESUME                   0
+
+ 103           LOAD_FAST_BORROW         1 (_seen)
+               POP_JUMP_IF_NONE         3 (to L1)
+               NOT_TAKEN
+               LOAD_FAST                1 (_seen)
+               JUMP_FORWARD             9 (to L2)
+       L1:     LOAD_GLOBAL              1 (set + NULL)
+               CALL                     0
+       L2:     STORE_FAST               1 (_seen)
+
+ 104           LOAD_FAST_BORROW_LOAD_FAST_BORROW 1 (name, _seen)
+               CONTAINS_OP              0 (in)
+               POP_JUMP_IF_TRUE         8 (to L3)
+               NOT_TAKEN
+               LOAD_FAST_BORROW         0 (name)
+               LOAD_DEREF               5 (raw)
+               CONTAINS_OP              1 (not in)
+               POP_JUMP_IF_FALSE        3 (to L4)
+               NOT_TAKEN
+
+ 105   L3:     LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+ 106   L4:     LOAD_FAST_BORROW         1 (_seen)
+               LOAD_ATTR                3 (add + NULL|self)
+               LOAD_FAST_BORROW         0 (name)
+               CALL                     1
+               POP_TOP
+
+ 107           LOAD_GLOBAL              4 (os)
+               LOAD_ATTR                6 (path)
+               LOAD_ATTR                9 (isfile + NULL|self)
+               LOAD_GLOBAL              4 (os)
+               LOAD_ATTR                6 (path)
+               LOAD_ATTR               11 (join + NULL|self)
+               LOAD_DEREF               4 (folder)
+               LOAD_FAST_BORROW         0 (name)
+               FORMAT_SIMPLE
+               LOAD_CONST               2 ('-Anim.png')
+               BUILD_STRING             2
+               CALL                     2
+               CALL                     1
+               TO_BOOL
+               POP_JUMP_IF_FALSE        3 (to L5)
+               NOT_TAKEN
+
+ 108           LOAD_FAST_BORROW         0 (name)
+               RETURN_VALUE
+
+ 109   L5:     LOAD_DEREF               5 (raw)
+               LOAD_FAST_BORROW         0 (name)
+               BINARY_OP               26 ([])
+               LOAD_ATTR               13 (get + NULL|self)
+               LOAD_CONST               3 ('copy_of')
+               CALL                     1
+               STORE_FAST               2 (copy_of)
+
+ 110           LOAD_FAST_BORROW         2 (copy_of)
+               TO_BOOL
+               POP_JUMP_IF_FALSE        9 (to L6)
+               NOT_TAKEN
+
+ 111           LOAD_DEREF               3 (_resolve_source)
+               PUSH_NULL
+               LOAD_FAST_BORROW_LOAD_FAST_BORROW 33 (copy_of, _seen)
+               CALL                     2
+               RETURN_VALUE
+
+ 112   L6:     LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimSet.has   (source line 146, 2 args)
+==============================================================================
+146           RESUME                   0
+
+147           LOAD_FAST_BORROW_LOAD_FAST_BORROW 16 (name, self)
+              LOAD_ATTR                0 (anims)
+              CONTAINS_OP              0 (in)
+              RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimSet.info   (source line 149, 2 args)
+==============================================================================
+149           RESUME                   0
+
+150           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (anims)
+              LOAD_ATTR                3 (get + NULL|self)
+              LOAD_FAST_BORROW         1 (name)
+              CALL                     1
+              RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimSet.frame   (source line 152, 4 args)
+==============================================================================
+152           RESUME                   0
+
+154           LOAD_FAST_BORROW_LOAD_FAST_BORROW 18 (name, frame_idx)
+              LOAD_FAST_BORROW         3 (dir_idx)
+              BUILD_TUPLE              3
+              STORE_FAST               4 (key)
+
+155           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (_frame_cache)
+              LOAD_ATTR                3 (get + NULL|self)
+              LOAD_FAST_BORROW         4 (key)
+              CALL                     1
+              STORE_FAST               5 (cached)
+
+156           LOAD_FAST_BORROW         5 (cached)
+              POP_JUMP_IF_NONE         3 (to L1)
+              NOT_TAKEN
+
+157           LOAD_FAST_BORROW         5 (cached)
+              RETURN_VALUE
+
+159   L1:     LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                4 (anims)
+              LOAD_ATTR                3 (get + NULL|self)
+              LOAD_FAST_BORROW         1 (name)
+              CALL                     1
+              STORE_FAST               6 (info)
+
+160           LOAD_FAST_BORROW         6 (info)
+              POP_JUMP_IF_NOT_NONE     3 (to L2)
+              NOT_TAKEN
+
+161           LOAD_CONST               1 (None)
+              RETURN_VALUE
+
+163   L2:     LOAD_FAST_BORROW         6 (info)
+              LOAD_ATTR                6 (n_frames)
+              STORE_FAST               7 (n_frames)
+
+164           LOAD_FAST_BORROW         7 (n_frames)
+              LOAD_SMALL_INT           0
+              COMPARE_OP              58 (bool(<=))
+              POP_JUMP_IF_FALSE        3 (to L3)
+              NOT_TAKEN
+
+165           LOAD_CONST               1 (None)
+              RETURN_VALUE
+
+166   L3:     LOAD_FAST_BORROW_LOAD_FAST_BORROW 39 (frame_idx, n_frames)
+              BINARY_OP                6 (%)
+              STORE_FAST               2 (frame_idx)
+
+168           LOAD_FAST_BORROW         6 (info)
+              LOAD_ATTR                8 (n_dirs)
+              STORE_FAST               8 (n_dirs)
+
+169           LOAD_FAST_BORROW_LOAD_FAST_BORROW 56 (dir_idx, n_dirs)
+              COMPARE_OP              18 (bool(<))
+              POP_JUMP_IF_FALSE        3 (to L4)
+              NOT_TAKEN
+              LOAD_FAST                3 (dir_idx)
+              JUMP_FORWARD             7 (to L5)
+      L4:     LOAD_FAST_BORROW_LOAD_FAST_BORROW 56 (dir_idx, n_dirs)
+              BINARY_OP                6 (%)
+      L5:     STORE_FAST               9 (use_dir)
+
+171           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               10 (sheets)
+              LOAD_FAST_BORROW         1 (name)
+              BINARY_OP               26 ([])
+              STORE_FAST              10 (sheet)
+
+172           LOAD_FAST_BORROW_LOAD_FAST_BORROW 38 (frame_idx, info)
+              LOAD_ATTR               12 (frame_w)
+              BINARY_OP                5 (*)
+              STORE_FAST              11 (x0)
+
+173           LOAD_FAST_BORROW_LOAD_FAST_BORROW 150 (use_dir, info)
+              LOAD_ATTR               14 (frame_h)
+              BINARY_OP                5 (*)
+              STORE_FAST              12 (y0)
+
+174           LOAD_FAST_BORROW_LOAD_FAST_BORROW 182 (x0, info)
+              LOAD_ATTR               12 (frame_w)
+              BINARY_OP                0 (+)
+              STORE_FAST              13 (x1)
+
+175           LOAD_FAST_BORROW_LOAD_FAST_BORROW 198 (y0, info)
+              LOAD_ATTR               14 (frame_h)
+              BINARY_OP                0 (+)
+              STORE_FAST              14 (y1)
+
+177           LOAD_FAST_BORROW        10 (sheet)
+              LOAD_ATTR               16 (size)
+              UNPACK_SEQUENCE          2
+              STORE_FAST              15 (sw)
+              STORE_FAST              16 (sh)
+
+178           LOAD_FAST_BORROW_LOAD_FAST_BORROW 223 (x1, sw)
+              COMPARE_OP             148 (bool(>))
+              POP_JUMP_IF_TRUE         8 (to L6)
+              NOT_TAKEN
+              LOAD_FAST_BORROW        14 (y1)
+              LOAD_FAST_BORROW        16 (sh)
+              COMPARE_OP             148 (bool(>))
+              POP_JUMP_IF_FALSE        3 (to L7)
+              NOT_TAKEN
+
+179   L6:     LOAD_CONST               1 (None)
+              RETURN_VALUE
+
+181   L7:     LOAD_FAST_BORROW        10 (sheet)
+              LOAD_ATTR               19 (crop + NULL|self)
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 188 (x0, y0)
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 222 (x1, y1)
+              BUILD_TUPLE              4
+              CALL                     1
+              STORE_FAST              17 (cropped)
+
+182           LOAD_FAST_BORROW        17 (cropped)
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (_frame_cache)
+              LOAD_FAST_BORROW         4 (key)
+              STORE_SUBSCR
+
+183           LOAD_FAST_BORROW        17 (cropped)
+              RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimSet.duration_of   (source line 185, 3 args)
+==============================================================================
+185           RESUME                   0
+
+186           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (anims)
+              LOAD_ATTR                3 (get + NULL|self)
+              LOAD_FAST_BORROW         1 (name)
+              CALL                     1
+              STORE_FAST               3 (info)
+
+187           LOAD_FAST_BORROW         3 (info)
+              POP_JUMP_IF_NOT_NONE     3 (to L1)
+              NOT_TAKEN
+
+188           LOAD_SMALL_INT           4
+              RETURN_VALUE
+
+189   L1:     LOAD_FAST_BORROW         3 (info)
+              LOAD_ATTR                4 (n_frames)
+              STORE_FAST               4 (n)
+
+190           LOAD_FAST_BORROW         4 (n)
+              LOAD_SMALL_INT           0
+              COMPARE_OP              58 (bool(<=))
+              POP_JUMP_IF_FALSE        3 (to L2)
+              NOT_TAKEN
+
+191           LOAD_SMALL_INT           4
+              RETURN_VALUE
+
+192   L2:     LOAD_FAST_BORROW         3 (info)
+              LOAD_ATTR                6 (durations)
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 36 (frame_idx, n)
+              BINARY_OP                6 (%)
+              BINARY_OP               26 ([])
+              RETURN_VALUE
+
+==============================================================================
+spriteanim.AnimSet.n_frames   (source line 194, 2 args)
+==============================================================================
+194           RESUME                   0
+
+195           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (anims)
+              LOAD_ATTR                3 (get + NULL|self)
+              LOAD_FAST_BORROW         1 (name)
+              CALL                     1
+              STORE_FAST               2 (info)
+
+196           LOAD_FAST_BORROW         2 (info)
+              TO_BOOL
+              POP_JUMP_IF_FALSE       13 (to L1)
+              NOT_TAKEN
+              LOAD_FAST_BORROW         2 (info)
+              LOAD_ATTR                4 (n_frames)
+              RETURN_VALUE
+      L1:     LOAD_SMALL_INT           0
+              RETURN_VALUE
