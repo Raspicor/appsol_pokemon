@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 113 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 131 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -237,6 +237,28 @@ notarization removes that step and nothing else does.
   padding at `padx=17, pady=5`: that is measured to make its requested size
   match a native button exactly, and without it the coloured buttons come out
   14x2 px smaller than the native ones beside them.
+- **macOS system colours follow dark mode; the game assumes Windows' light
+  defaults.** Two things break, both fixed by `install_contrast_fix()`:
+  aqua paints the area around a widget's native bezel with
+  `-highlightbackground`, whose default is `systemWindowBackgroundColor` --
+  near black in dark mode -- so every button on the game's cream
+  (`#fff6e0`) battle window gets a black rectangle around it (measured: a 4px
+  `#1c1c1c` band at the widget bounds, white bezel inside). And `Label`'s
+  default `-foreground` is `systemTextColor`, white in dark mode, so a label
+  that sets `bg` but not `fg` is invisible on a light background (measured:
+  "야생 ？？？ Lv.2" at (255,252,245) on (255,244,221)). The launcher fills in
+  `highlightbackground` from the *parent's* background and `fg` from the
+  widget's *own* background, and only where the game left them unset.
+  Do not extend the `fg` rule to Button: aqua pins a Button's default
+  foreground to `Black` and its bezel is always light, so deriving white text
+  there would make it unreadable. Menu has no `-highlightbackground` at all --
+  passing it makes widget creation fail.
+- **The pet stands still whenever a battle window is open, by design.**
+  `_update_walk` (pet.py:9279) returns immediately on `self.battle_open`,
+  while `Companion._step_free_roam` has no such check -- so companions keep
+  roaming and the pet looks frozen. `open_battle` sets the flag and registers
+  `WM_DELETE_WINDOW` -> `_close_battle`, which clears it, so the native close
+  button that `install_titlebar_restore()` adds does unfreeze the pet.
 - **`wm iconphoto` sets the *application* icon on aqua, `-default` or not.**
   The game calls `win.iconphoto(True, <pet sprite>)` at startup
   (`_setup_taskbar_icon`, pet.py:17476) -- on Windows that is the window's
