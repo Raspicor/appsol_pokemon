@@ -1,36 +1,34 @@
 #!/usr/bin/env python3
-"""Run PikaPet on macOS.
+"""PikaPet를 macOS에서 실행한다.
 
-pet.pyc is Windows-built bytecode, but it is not Windows-specific: it makes no
-Win32 calls of its own and routes everything platform-dependent through the
-`winlayer` module. So rather than rewrite the game, this launcher loads the
-original bytecode and patches the five places where Windows assumptions leak
-through:
+pet.pyc는 Windows에서 빌드된 바이트코드지만 Windows 전용은 아니다. 자기가 직접
+Win32를 부르는 곳이 없고, 플랫폼에 의존하는 것은 전부 `winlayer` 모듈로 보낸다.
+그래서 게임을 다시 쓰는 대신, 이 런처가 원본 바이트코드를 그대로 로드한 뒤
+Windows 가정이 새어나오는 다섯 곳만 런타임에 패치한다:
 
-  1. `winlayer`        -> maclayer, the Quartz/AppKit implementation next door.
-  2. `-transparentcolor` -> macOS has no colour-key transparency; translated to
-                          the real `-transparent` window attribute.
-  3. `MAGIC`           -> the magenta chroma key becomes `systemTransparent`,
-                          which is what the translated attribute expects.
-  4. `PetApp.setup_tray` -> pystray's macOS backend runs `NSApplication.run()`,
-                          which only works on the main thread; PikaPet starts it
-                          on a daemon thread, which traps the process. Replaced
-                          with a stand-in that keeps notifications working.
-  5. the magenta plate every sprite frame is pasted onto -> a transparent one.
-                          The colour is a literal in the render path, so patch 3
-                          cannot reach it.
+  1. `winlayer`        -> 옆에 있는 Quartz/AppKit 구현인 maclayer로 교체.
+  2. `-transparentcolor` -> macOS에는 컬러키 투명도가 없으므로, 실제로 존재하는
+                          `-transparent` 창 속성으로 번역한다.
+  3. `MAGIC`           -> 마젠타 컬러키를 `systemTransparent`로. 번역된 속성이
+                          기대하는 값이다. 폴백 경로에서만 적용한다. 아래 오버레이는
+                          그 색을 표식으로 읽으므로 손대지 않는다.
+  4. `PetApp.setup_tray` -> pystray의 macOS 백엔드는 `NSApplication.run()`을
+                          부르는데 이건 메인 스레드 전용이다. PikaPet은 이를 데몬
+                          스레드에서 시작해 프로세스가 즉사한다. 알림을 살린 대역과,
+                          트레이에만 있던 동작을 담은 메뉴 바 항목(mactray.py)으로
+                          교체.
+  5. 스프라이트 프레임이 올라가는 마젠타 판 -> 창이 실제로 그리는 색으로. 색이
+                          렌더 경로의 리터럴이라 패치 3으로는 닿지 않는다.
 
-Known limitation: Tk 9.0 on aqua accepts `-transparent` and the
-`systemTransparent` colour but still paints the window's backdrop opaque, so the
-pet sits on a solid rectangle rather than directly on the desktop. Patches 2, 3
-and 5 make that rectangle black instead of magenta and keep the sprite's own
-alpha intact, which is what a Tk build with working transparency would need.
-Verified on Tk 9.0.4 / macOS 26: Label and Canvas, with and without
-overrideredirect, `-alpha` below 1, and the `MacWindowStyle` plain/noActivates
-route all render the backdrop opaque.
+투명도는 이 패치들에 들어가지 않는다. aqua의 Tk로는 불가능하기 때문이다. Tk 9는
+모든 toplevel을 알파 채널 없는 백킹 스토어에 렌더링하므로 `-transparent`,
+`systemTransparent`, non-opaque NSWindow 어느 것도 결국 꽉 찬 사각형으로 합성된다.
+그래서 스프라이트는 Tk 창 위에 겹쳐놓은 네이티브 AppKit 창이 그린다 — 측정 근거는
+overlay.py에 있다. 패치 5가 그 오버레이에 진짜 알파를 가진 판을 넘긴다. AppKit을
+쓸 수 없으면 불투명 창 위의 검은 판으로 되돌아가고, 그게 이 포팅의 예전 동작이다.
 
-Nothing is written back to pet.pyc, so the patches cannot drift from the game
-and none of this depends on the decompiled source being perfect.
+pet.pyc에 아무것도 되쓰지 않으므로 패치가 게임과 어긋날 수 없고, 디컴파일 결과가
+완벽한지에도 의존하지 않는다.
 
     ./pikapet_mac.py
 """
@@ -41,19 +39,33 @@ import subprocess
 import sys
 import tkinter as tk
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+def _here():
+    """pet.pyc와 에셋이 있는 디렉터리.
+
+    소스에서 돌 때는 이 파일이 있는 run/ 이다. .app으로 묶으면 PyInstaller가
+    데이터 파일을 풀어놓은 곳(`sys._MEIPASS`)이 되는데, 그건 pet.pyc 자신이
+    frozen일 때 RESOURCE_DIR로 쓰는 값과 같다. 이 앱은 원래 PyInstaller
+    onefile 번들이었으므로 그 분기가 바이트코드에 그대로 살아 있다.
+    """
+    if getattr(sys, "frozen", False):
+        return getattr(sys, "_MEIPASS",
+                       os.path.dirname(os.path.abspath(sys.executable)))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+HERE = _here()
 
 
 # --------------------------------------------------------------------------
-# 1. environment: PikaPet looks for the Windows profile variables
+# 1. 환경: PikaPet은 Windows 프로필 환경변수를 찾는다
 # --------------------------------------------------------------------------
 
 def install_save_paths():
-    """Point %APPDATA%/%LOCALAPPDATA% at the usual macOS location.
+    """%APPDATA%/%LOCALAPPDATA%를 macOS의 통상 위치로 돌린다.
 
-    pet.pyc builds its save directory from these, and its fallback when they
-    are unset puts pet_state.json next to the executable -- inside the app
-    folder, where it would be easy to lose.
+    pet.pyc는 이 값들로 저장 디렉터리를 만든다. 둘 다 비어 있을 때의 폴백은
+    pet_state.json을 실행 파일 옆 — 즉 앱 폴더 안 — 에 두는데, 거기 두면 쉽게
+    잃어버린다.
     """
     default = os.path.expanduser("~/Library/Application Support")
     os.environ.setdefault("APPDATA", default)
@@ -61,21 +73,21 @@ def install_save_paths():
 
 
 # --------------------------------------------------------------------------
-# 2. transparency
+# 2. 투명도
 # --------------------------------------------------------------------------
 
 def install_transparency_shim():
-    """Translate Windows colour-key transparency into the macOS equivalent.
+    """Windows 컬러키 투명도를 macOS의 대응물로 번역한다.
 
-    On Windows the pet asks Tk to punch out every magenta pixel:
+    Windows에서 펫은 마젠타 픽셀을 전부 뚫어달라고 Tk에 요청한다:
 
         win.attributes('-transparentcolor', '#ff00ff')
         win.config(bg='#ff00ff')
 
-    macOS Tk has no such attribute and raises TclError. PikaPet catches that,
-    but in `Companion.__init__` the label is created inside the same try block,
-    so a raise there leaves a companion window with no sprite in it. Translating
-    the call instead of letting it fail keeps every one of those paths intact.
+    macOS Tk에는 그런 속성이 없어서 TclError가 난다. PikaPet이 그걸 잡기는 하는데,
+    `Companion.__init__`에서는 라벨 생성이 같은 try 블록 안에 있다. 그래서 예외가
+    나면 동료 창에 스프라이트가 붙지 않는다. 예외를 내버려두지 않고 호출 자체를
+    번역하면 그 경로들이 전부 온전히 남는다.
     """
     original = tk.Wm.wm_attributes
 
@@ -91,12 +103,45 @@ def install_transparency_shim():
     tk.Wm.attributes = wm_attributes
 
 
-def transparency_is_available(master):
-    """True if this Tk really supports transparent windows.
+TRANSPARENCY_NOTES = {
+    "native": "켜짐 (스프라이트를 AppKit이 그림, 배경이 비침)",
+    "opaque": "꺼짐 (AppKit 없음, 펫이 검은 판 위에 놓임)",
+    "none": "꺼짐 (불투명 펫 창)",
+}
 
-    Probed on a throwaway window rather than assumed, because swapping MAGIC
-    for `systemTransparent` on a Tk that rejects it would make every pet window
-    fail to configure.
+
+def transparency_mode(master):
+    """이 machine에서 펫의 배경을 어떻게 처리할지.
+
+    "native" -- overlay.py가 AppKit 창으로 스프라이트를 그린다. 여기서 진짜
+                투명도를 얻는 유일한 방법이다. aqua의 Tk는 무엇을 요청해도
+                toplevel을 꽉 찬 사각형으로 합성한다 (Tk 9.0.4 / macOS 26에서
+                위젯 종류, override-redirect, `-alpha`, `-stylemask`,
+                `MacWindowStyle`, non-opaque NSWindow 전부 실측. Tk 8.6.18은
+                반대로 창을 통째로 뚫어버린다).
+    "opaque" -- pyobjc가 없어서, 스프라이트 판을 창이 그리는 검정과 같은 색으로
+                칠하고 펫은 사각형 위에 놓인다.
+    "none"   -- Tk가 투명도 속성 자체를 거부한다.
+
+    PIKAPET_OVERLAY=0으로 예전 동작을 강제할 수 있다. 아직 본 적 없는 디스플레이
+    구성에서 오버레이가 말썽을 부릴 때를 위한 탈출구다.
+    """
+    if not transparency_is_available(master):
+        return "none"
+    if os.environ.get("PIKAPET_OVERLAY") == "0":
+        return "opaque"
+    try:
+        import overlay
+    except Exception:
+        return "opaque"
+    return "native" if overlay.available() else "opaque"
+
+
+def transparency_is_available(master):
+    """이 Tk가 투명도 속성과 색을 애초에 받아주는지.
+
+    가정하지 않고 버릴 창으로 직접 찔러본다. 거부하는 Tk에서 MAGIC을
+    `systemTransparent`로 바꿔버리면 모든 펫 창의 설정이 실패하기 때문이다.
     """
     probe = None
     try:
@@ -115,29 +160,40 @@ def transparency_is_available(master):
                 pass
 
 
-def install_sprite_alpha_patch():
-    """Stop the sprite render path from flattening frames onto magenta.
+# 스프라이트를 네이티브로 그릴 수 없을 때 배경이 되는 색. Tk는 투명 창의 배경을
+# 불투명한 검정으로 칠하고, 아래의 판은 그 색과 정확히 같아야 한다. 아니면 펫이
+# 눈에 보이는 다른 색 사각형 안에 앉는다.
+BACKDROP = (0, 0, 0)
 
-    `Companion.step` and `PetApp.redraw` both build their frame the Windows way
-    (pet.py:4264 and pet.py:7252):
 
-        resized.putalpha(alpha)                       # thresholded to 0 or 255
+def install_sprite_alpha_patch(transparent=False):
+    """스프라이트 판을 마젠타에서 창이 실제로 보여주는 색으로 바꾼다.
+
+    `Companion.step`과 `PetApp.redraw`는 둘 다 프레임을 Windows 방식으로 만든다
+    (pet.py:4264, pet.py:7252):
+
+        resized.putalpha(alpha)                       # 0 또는 255로 이진화
         bg = Image.new('RGB', (w, h), (255, 0, 255))
         bg.paste(resized, (0, 0), resized)
         ImageTk.PhotoImage(bg)
 
-    On Windows the window's `-transparentcolor` key erases those magenta pixels
-    when the window is composited, so the plate is never seen. macOS has no
-    colour key -- `-transparent` only clears widget backgrounds -- so the plate
-    survives and the pet sits in a magenta box.
+    Windows에서는 창의 `-transparentcolor` 키가 합성 시점에 그 마젠타 픽셀을
+    지워버리므로 판이 보일 일이 없다. macOS에는 컬러키가 없고 — `-transparent`는
+    위젯 배경만 비운다 — 판이 그대로 살아남아 펫이 마젠타 상자 안에 앉는다.
 
-    Patch 3 cannot fix this: the colour here is a literal `(255, 0, 255)` tuple
-    in the bytecode, not the `MAGIC` global. Handing back a transparent RGBA
-    plate instead leaves `paste` (which uses the sprite as its own mask)
-    working unchanged, and ImageTk then receives a real alpha channel.
+    패치 3으로는 여기 닿지 못한다. 색이 `MAGIC` 전역이 아니라 바이트코드 안의
+    리터럴 `(255, 0, 255)` 튜플이기 때문이다. 이 두 곳이 pet.pyc에 있는
+    `(255, 0, 255)` 상수 전부이므로, 모드와 색으로 거르면 다른 것이 걸릴 수 없다.
 
-    The two call sites are the only `(255, 0, 255)` constants in pet.pyc, so
-    matching on mode and colour cannot catch anything else.
+    `transparent`를 주면 판이 아무것도 없는 진짜 RGBA가 되어, 합성된 프레임이
+    스프라이트의 알파를 overlay.py까지 그대로 들고 간다. 그게 정상 경로다.
+
+    이 옵션이 없으면 판은 **불투명**이어야 한다. 투명 판만으로도 마젠타는 사라지지만,
+    Tk가 직접 그리는 경우에는 애니메이션이 깨진다. 그때는 프레임이 자기 불투명
+    픽셀만 쓰고, Tk는 non-opaque 창을 지우지 않으므로, 매 프레임이 이전 프레임 위에
+    합성돼 펫이 지난 자세들의 뭉개짐으로 번진다. 판을 BACKDROP — 창이 이미 그리는
+    바로 그 색 — 으로 채우면 매 프레임 위젯 전체를 다시 칠하게 되고, 사각형은 자기
+    배경에 묻혀 보이지 않는다.
     """
     from PIL import Image
 
@@ -145,107 +201,541 @@ def install_sprite_alpha_patch():
 
     def new(mode, size, color=0, *args, **kwargs):
         if mode == "RGB" and color == (255, 0, 255):
-            return original("RGBA", size, (0, 0, 0, 0), *args, **kwargs)
+            if transparent:
+                return original("RGBA", size, (0, 0, 0, 0), *args, **kwargs)
+            return original(mode, size, BACKDROP, *args, **kwargs)
         return original(mode, size, color, *args, **kwargs)
 
     Image.new = new
 
 
+# Windows Tk의 TkDefaultFont는 {Segoe UI} 9 인데, aqua에서는 시스템 폰트 10이다.
+# 더 크고 더 넓다. PikaPet은 버튼 폭을 `width=N` 으로 주고 Tk에서 그 단위는
+# 픽셀이 아니라 **문자 수**이므로, 기본 폰트가 넓어지면 버튼 줄이 통째로 넓어진다.
+# compact 전투 창은 게임이 300x380으로 하드코딩해서 여유가 없다. 실측(전투 창의
+# 내용 프레임 요청 폭 대 캔버스 292px):
+#
+#     시스템 폰트 10  ->  309px  (17px 넘침, 내용이 x=-17 로 밀려 왼쪽이 잘린다)
+#     시스템 폰트  9  ->  295px  ( 3px 넘침)
+#     시스템 폰트  8  ->  281px  (넘치지 않음)
+#
+# 그래서 8로 내린다. 게임은 글자 있는 라벨 대부분에 ('맑은 고딕', N) 을 직접
+# 지정하므로 이 값이 닿는 곳은 사실상 폰트를 안 준 위젯 — 즉 버튼 — 뿐이고,
+# 그게 정확히 넘치던 자리다.
+DEFAULT_FONT_SIZE = 8
+
+
+def install_font_defaults(root):
+    """기본 폰트를 Windows 레이아웃이 가정하는 비율로 맞춘다.
+
+    게임이 위젯을 만들기 전에 불러야 한다. 실패해도 그냥 넘어간다. 레이아웃이
+    조금 넘치는 것이 앱이 안 뜨는 것보다 낫다.
+    """
+    try:
+        from tkinter import font as tkfont
+
+        current = tkfont.nametofont("TkDefaultFont", root=root)
+        before = current.actual("size")
+        if before <= DEFAULT_FONT_SIZE:
+            return before
+        current.configure(size=DEFAULT_FONT_SIZE)
+        return before
+    except Exception as exc:
+        print(f"  기본 폰트 조정 실패: {type(exc).__name__}: {exc}", flush=True)
+        return None
+
+
+def _restore_titlebar(win):
+    """overrideredirect를 끈 Tk 창에 macOS 타이틀바를 돌려준다.
+
+    aqua의 Tk는 `overrideredirect(True)` 로 장식을 떼어낸 창에서 그것을 다시
+    끄면 Tk 쪽 플래그만 바뀌고 NSWindow의 styleMask는 그대로 둔다. 실측:
+    styleMask 78 -> 14 로 갈 뿐 titled 비트가 돌아오지 않고, withdraw/deiconify
+    로 다시 매핑해도 마찬가지다. 그러면 타이틀바도 없고 게임이 compact 창에
+    걸어두는 드래그 바인딩도 없는 창이 되어 **아예 움직일 수 없다**. 로켓단
+    습격에서 "화면 키우기"를 누르면 정확히 그 상태가 된다.
+
+    그래서 styleMask를 직접 복원한다. Windows에서 이 창이 갖는 것과 같은,
+    끌 수 있는 네이티브 타이틀바가 생긴다.
+    """
+    try:
+        import AppKit
+
+        titled = getattr(AppKit, "NSWindowStyleMaskTitled", 1)
+        closable = getattr(AppKit, "NSWindowStyleMaskClosable", 2)
+        mini = getattr(AppKit, "NSWindowStyleMaskMiniaturizable", 4)
+
+        width, height = win.winfo_width(), win.winfo_height()
+        if width < 40 or height < 40:
+            return
+        best = None
+        for ns in AppKit.NSApp().windows():
+            frame = ns.frame()
+            if (abs(int(frame.size.width) - width) <= 6
+                    and abs(int(frame.size.height) - height) <= 6):
+                gap = abs(int(frame.origin.x) - win.winfo_rootx())
+                if best is None or gap < best[0]:
+                    best = (gap, ns)
+        if best is None:
+            return
+        ns = best[1]
+        if ns.styleMask() & titled:
+            return
+        ns.setStyleMask_(ns.styleMask() | titled | closable | mini)
+        try:
+            ns.setTitle_(win.title())
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def install_titlebar_restore():
+    """`overrideredirect(False)` 뒤에 타이틀바를 되살리도록 Tk를 훅한다.
+
+    창이 다시 매핑된 뒤에 손대야 하므로 after_idle로 미룬다. 실패해도 조용히
+    넘어간다. 창을 못 옮기는 것이 앱이 죽는 것보다는 낫다.
+    """
+    original = tk.Wm.wm_overrideredirect
+
+    def wm_overrideredirect(self, boolean=None):
+        result = original(self, boolean)
+        if boolean is not None and not boolean:
+            try:
+                self.after_idle(lambda: _restore_titlebar(self))
+            except Exception:
+                pass
+        return result
+
+    tk.Wm.wm_overrideredirect = wm_overrideredirect
+    tk.Wm.overrideredirect = wm_overrideredirect
+
+
 # --------------------------------------------------------------------------
-# 3. the tray icon
+# 2-c. 기호 글리프
+# --------------------------------------------------------------------------
+# macOS 시스템 폰트에는 U+2694(⚔)의 쓸 만한 텍스트 글리프가 없다. Tk는 이걸
+# 두부 박스로도 안 그리고 -- 그랬으면 눈에 띄었을 텐데 -- 머리카락처럼 가는
+# 글리프로 떨어뜨린다. 게임이 쓰는 9px에서는 그냥 작은 × 하나로 보여서
+# '⚔ Fight' 버튼이 '× Fight' 가 된다. Windows에서는 맑은 고딕의 폰트 링크가
+# 이걸 제대로 된 칼 그림으로 그린다.
+#
+# VS16(U+FE0F)을 붙이면 이모지 표현이 되고, 그러면 Tk가 Apple Color Emoji로
+# 폴백해서 칼 두 자루가 제대로 나온다. 게임 코드에도 이미 한 군데
+# ('⚔️\nVS') 는 VS16이 붙어 있다 -- 원작자도 알고 있었던 것 같다.
+#
+# 대상을 ⚔ 하나로 좁힌 근거: 게임 문자열에 쓰인 기호 134종을 전부 9px bold로
+# 그려서 잉크 픽셀을 셌다. 망가지는 건 ⚔ 뿐이다 (잉크 20, VS16을 붙이면 65).
+# ▶ ↩ ⚙ ⬇ 같은 것들은 모노크롬으로 멀쩡히 나오므로 건드리지 않는다 -- 그걸
+# 이모지로 바꾸는 건 고치는 게 아니라 취향을 바꾸는 것이다.
+BROKEN_GLYPHS = {"\u2694": "\u2694\ufe0f"}
+
+# 사람이 읽는 글자가 들어가는 옵션만 손댄다. 다른 옵션에 저 문자가 들어갈 일은
+# 없지만, 폭이 좁을수록 사고가 적다.
+TEXT_OPTIONS = frozenset(("text", "label", "title"))
+
+
+def _fix_glyphs(value):
+    """표시용 문자열에서 macOS가 못 그리는 기호를 이모지 표현으로 바꾼다."""
+    for bad, good in BROKEN_GLYPHS.items():
+        if bad in value and good not in value:
+            value = value.replace(bad, good)
+    return value
+
+
+def install_glyph_fix():
+    """모든 위젯의 텍스트 옵션에 글리프 보정을 건다.
+
+    `Misc._options` 는 tkinter가 파이썬 키워드를 Tcl 옵션으로 바꾸는 단 하나의
+    길목이다. Widget.__init__, Misc.configure, Menu.add, Canvas._create 가 전부
+    여기를 지난다. 그래서 위젯 종류마다 훅을 거는 대신 이 하나만 감싼다.
+    ⚔ 는 버튼 10곳, 라벨 6곳, 메뉴 항목에도 나오므로 그 전부가 필요하다.
+    """
+    original = tk.Misc._options
+
+    def _options(self, cnf, kw=None):
+        try:
+            if kw:
+                for key in TEXT_OPTIONS:
+                    v = kw.get(key)
+                    if isinstance(v, str):
+                        kw[key] = _fix_glyphs(v)
+            if isinstance(cnf, dict):
+                for key in TEXT_OPTIONS:
+                    v = cnf.get(key)
+                    if isinstance(v, str):
+                        cnf[key] = _fix_glyphs(v)
+        except Exception:
+            pass
+        return original(self, cnf, kw)
+
+    tk.Misc._options = _options
+
+
+# --------------------------------------------------------------------------
+# 2-d. 색 있는 버튼
+# --------------------------------------------------------------------------
+# aqua의 tk.Button은 -background 를 **완전히 무시한다**. 네이티브 버튼을 그리고
+# 색은 버린다. bd=0, relief=flat, highlightthickness=0 을 어떻게 섞어도 같다
+# (여섯 조합을 그려서 확인했다). highlightbackground 는 버튼 둘레에 얇은 테를
+# 두를 뿐 버튼 면은 여전히 하얗다.
+#
+# 게임에서 버튼은 181개인데 그중 색을 주는 건 8개뿐이고, 7개가 같은 노란색
+# '#ffd54a' 액션 버튼이다 -- 야생 포켓몬 토스트의 '⚔ Fight', 배틀의 '⚔ 공격',
+# '⚔ 스테이지 N 도전!', 선물 '🎁 보러가기', 확인 버튼들. Windows에서는 노란
+# 버튼이고 macOS에서는 다른 버튼과 구별되지 않는 흰 버튼이 된다.
+#
+# 그래서 색을 준 버튼만 Label로 흉내 낸다. Label은 배경색을 그대로 칠한다.
+# 나머지 173개는 진짜 tk.Button 그대로 두어 네이티브 모양을 지킨다. 게임은
+# 위젯에 isinstance 도 winfo_class 도 쓰지 않으므로 (disasm으로 확인) 바꿔치기가
+# 보이지 않는다.
+
+# 눌렀을 때 얼마나 어두워지는가. 값이 클수록 눌린 티가 난다.
+PRESS_DARKEN = 0.82
+HOVER_LIGHTEN = 1.06
+
+# 실측: 이 여백을 주면 같은 text/font/width 로 만든 네이티브 버튼과
+# 요청 크기가 정확히 같아진다.
+BUTTON_PADX = 17
+BUTTON_PADY = 5
+
+
+def _shade(color, factor):
+    """#rrggbb 를 factor 배로 밝게/어둡게. 실패하면 원래 색."""
+    try:
+        if not (isinstance(color, str) and color.startswith("#") and len(color) == 7):
+            return color
+        parts = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+        return "#%02x%02x%02x" % tuple(
+            max(0, min(255, int(round(p * factor)))) for p in parts)
+    except Exception:
+        return color
+
+
+def _is_light(color):
+    """#rrggbb 가 밝은 색인가. 판단할 수 없으면 밝다고 본다 (검정 글자가 기본)."""
+    try:
+        if not (isinstance(color, str) and color.startswith("#") and len(color) == 7):
+            return True
+        r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 140
+    except Exception:
+        return True
+
+
+class MacColorButton(tk.Label):
+    """배경색을 실제로 칠하는 버튼. aqua의 tk.Button 대용.
+
+    tk.Button과 Label은 옵션이 거의 같다 (text/font/bg/fg/width/state/anchor/
+    justify/wraplength/relief/bd/padx/pady/image/compound). 다른 것은 `command`와
+    `invoke()`/`flash()` 뿐이라, 그 셋만 얹으면 게임 쪽에서는 버튼과 구별되지
+    않는다.
+    """
+
+    def __init__(self, master=None, cnf=None, **kw):
+        kw = dict(cnf or {}, **kw)
+        self._command = kw.pop("command", None)
+        # Button에만 있고 Label에는 없는 옵션들. 조용히 버린다.
+        for gone in ("default", "overrelief", "repeatdelay", "repeatinterval"):
+            kw.pop(gone, None)
+
+        bg = kw.get("bg", kw.get("background"))
+        # 진짜 tk.Button의 기본 글자색은 검정이다. Label의 기본은
+        # systemTextColor 라서, 그냥 두면 다크 모드에서 노란 버튼 위에 흰
+        # 글자가 찍혀 읽을 수 없게 된다. 배경 밝기를 보고 정한다.
+        if "fg" not in kw and "foreground" not in kw:
+            kw["fg"] = "#111111" if _is_light(bg) else "#ffffff"
+        # 네이티브 aqua 버튼과 같은 자리를 차지하게 맞춘 값이다. 안 맞추면
+        # 색 버튼만 14x2 px 작아서, 옆에 선 네이티브 버튼과 줄이 어긋난다.
+        kw.setdefault("padx", BUTTON_PADX)
+        kw.setdefault("pady", BUTTON_PADY)
+        kw.setdefault("relief", "flat")
+        kw.setdefault("bd", 0)
+        kw.setdefault("cursor", "pointinghand")
+        kw.setdefault("highlightthickness", 1)
+        kw.setdefault("highlightbackground", _shade(bg, 0.78))
+        super().__init__(master, **kw)
+
+        self._base_bg = bg
+        self.bind("<Enter>", self._on_enter, add="+")
+        self.bind("<Leave>", self._on_leave, add="+")
+        self.bind("<ButtonPress-1>", self._on_press, add="+")
+        self.bind("<ButtonRelease-1>", self._on_release, add="+")
+
+    # -- 눌린 느낌 ---------------------------------------------------------
+
+    def _enabled(self):
+        try:
+            return str(self.cget("state")) != "disabled"
+        except Exception:
+            return True
+
+    def _paint(self, factor):
+        if self._base_bg and self._enabled():
+            try:
+                tk.Label.configure(self, bg=_shade(self._base_bg, factor))
+            except Exception:
+                pass
+
+    def _on_enter(self, _event=None):
+        self._paint(HOVER_LIGHTEN)
+
+    def _on_leave(self, _event=None):
+        self._paint(1.0)
+
+    def _on_press(self, _event=None):
+        self._paint(PRESS_DARKEN)
+
+    def _on_release(self, event=None):
+        self._paint(HOVER_LIGHTEN)
+        # 버튼 밖에서 손을 떼면 취소. 진짜 버튼과 같은 동작이다.
+        if event is not None:
+            if not (0 <= event.x < self.winfo_width()
+                    and 0 <= event.y < self.winfo_height()):
+                self._paint(1.0)
+                return
+        self.invoke()
+
+    # -- 버튼 API ----------------------------------------------------------
+
+    def invoke(self):
+        if self._command is None or not self._enabled():
+            return None
+        return self._command()
+
+    def flash(self):
+        for factor in (PRESS_DARKEN, 1.0, PRESS_DARKEN, 1.0):
+            self._paint(factor)
+            self.update_idletasks()
+
+    def configure(self, cnf=None, **kw):
+        kw = dict(cnf or {}, **kw)
+        if "command" in kw:
+            self._command = kw.pop("command")
+        for gone in ("default", "overrelief", "repeatdelay", "repeatinterval"):
+            kw.pop(gone, None)
+        new_bg = kw.get("bg", kw.get("background"))
+        if new_bg:
+            self._base_bg = new_bg
+        if not kw:
+            return None
+        return tk.Label.configure(self, **kw)
+
+    config = configure
+
+    def cget(self, key):
+        if key == "command":
+            return self._command
+        return tk.Label.cget(self, key)
+
+    def __setitem__(self, key, value):
+        self.configure(**{key: value})
+
+    def __getitem__(self, key):
+        return self.cget(key)
+
+
+def install_button_colors():
+    """배경색을 준 tk.Button만 MacColorButton으로 바꿔치기한다.
+
+    게임은 `tk.Button(...)` 으로 부르고 이름은 호출할 때 tkinter 모듈에서
+    찾으므로, 모듈 속성을 갈아끼우면 그대로 걸린다. 색을 안 주는 버튼은
+    진짜 tk.Button을 돌려줘서 네이티브 모양을 지킨다.
+    """
+    original = tk.Button
+
+    def Button(master=None, cnf=None, **kw):
+        merged = dict(cnf or {}, **kw)
+        bg = merged.get("bg", merged.get("background"))
+        if isinstance(bg, str) and bg.startswith("#"):
+            try:
+                return MacColorButton(master, **merged)
+            except Exception:
+                pass
+        return original(master, cnf or {}, **kw)
+
+    Button.__doc__ = MacColorButton.__doc__
+    tk.Button = Button
+    return original
+
+# --------------------------------------------------------------------------
+# 2-e. 앱(Dock) 아이콘
+# --------------------------------------------------------------------------
+# 게임은 시작할 때 `win.iconphoto(True, <펫 스프라이트>)` 를 부른다
+# (`_setup_taskbar_icon`, pet.py:17476). Windows에서는 그 창의 작업표시줄
+# 아이콘을 펫으로 바꾸는, 의도한 동작이다.
+#
+# aqua에서는 그게 **앱 아이콘 자체**를 갈아치운다. 그래서 Dock의 PikaPet이
+# 몬스터볼에서 파이리가 된다. `-default` 를 떼는 것으로는 못 막는다 -- 실측:
+#
+#     setApplicationIconImage_(447px)  ->  앱 아이콘 447x447
+#     iconphoto(False, 32px)           ->  앱 아이콘 32x32   <- default 없이도 바뀐다
+#     iconphoto(True,  32px)           ->  앱 아이콘 32x32
+#
+# macOS 창에는 애초에 타이틀바 아이콘이 없으므로 (문서 창의 프록시 아이콘을
+# 빼면) 이 호출이 창에 해주는 일은 없다. 그래서 원본은 그대로 부르고, 직후에
+# 앱 아이콘만 우리 것으로 되돌린다.
+
+# 소스에서 그냥 실행할 때 쓸 아이콘. 번들에서는 .icns가 이미 붙어 있지만,
+# 게임이 덮어쓴 뒤 되돌리려면 어차피 이미지가 필요하다.
+ICON_CANDIDATES = (
+    os.path.join(HERE, "..", "Resources", "PikaPet.icns"),   # .app 안
+    os.path.join(HERE, "..", "tools", "icon.png"),           # 저장소에서 실행
+)
+
+_app_icon = None            # 한 번 읽어서 들고 있는 NSImage
+
+
+def app_icon_image():
+    """앱 아이콘 NSImage. 못 찾으면 None."""
+    global _app_icon
+    if _app_icon is not None:
+        return _app_icon
+    try:
+        import AppKit
+
+        for path in ICON_CANDIDATES:
+            path = os.path.abspath(path)
+            if not os.path.exists(path):
+                continue
+            image = AppKit.NSImage.alloc().initWithContentsOfFile_(path)
+            if image is not None:
+                _app_icon = image
+                return image
+    except Exception as exc:
+        print(f"  앱 아이콘 읽기 실패: {type(exc).__name__}: {exc}", flush=True)
+    return None
+
+
+def set_app_icon():
+    """Dock 아이콘을 몬스터볼로 맞춘다. 아이콘이 없으면 그냥 넘어간다."""
+    image = app_icon_image()
+    if image is None:
+        return False
+    try:
+        import AppKit
+
+        AppKit.NSApp().setApplicationIconImage_(image)
+        return True
+    except Exception:
+        return False
+
+
+def install_app_icon_guard():
+    """`iconphoto` 가 Dock 아이콘을 갈아치우면 곧바로 되돌린다."""
+    original = tk.Wm.wm_iconphoto
+
+    def wm_iconphoto(self, *args, **kw):
+        result = original(self, *args, **kw)
+        set_app_icon()
+        return result
+
+    tk.Wm.wm_iconphoto = wm_iconphoto
+    tk.Wm.iconphoto = wm_iconphoto
+
+# --------------------------------------------------------------------------
+# 3. 트레이 아이콘
 # --------------------------------------------------------------------------
 
 class MacTray:
-    """Stands in for the pystray icon PetApp expects.
+    """PetApp이 기대하는 pystray 아이콘 자리를 대신한다.
 
-    PikaPet only ever touches four members of it -- `notify`, `update_menu`,
-    `icon` and `stop` -- and guards each call with `if self.tray_icon:`. Leaving
-    the attribute None would therefore silently drop every notification, so this
-    keeps it truthy and forwards notifications to Notification Center.
+    PikaPet이 실제로 건드리는 멤버는 `notify`, `update_menu`, `icon`, `stop`
+    네 개뿐이고, 호출마다 `if self.tray_icon:`으로 감싼다. 그래서 속성을 None으로
+    두면 모든 알림이 조용히 사라진다. 이 객체는 truthy를 유지하면서 알림을 알림
+    센터로 넘긴다.
 
-    The menu is not reimplemented here: PikaPet already builds a full
-    right-click menu in `PetApp.build_menu` -- skills, training, pokedex, daily
-    quests, settings, quit -- and binds it to the pet itself, so the tray copy
-    was redundant on macOS.
+    메뉴는 여기서 다시 구현하지 않는다. PikaPet은 이미 `PetApp.build_menu`에서
+    완전한 우클릭 메뉴 — 스킬, 훈련, 도감, 일일 퀘스트, 설정, 종료 — 를 만들어
+    펫 자신에게 붙이므로, macOS에서 트레이 사본은 군더더기였다.
     """
 
     def __init__(self, app):
         self._app = app
-        self.icon = None            # PetApp assigns a PIL image here; unused
+        self.icon = None            # PetApp이 PIL 이미지를 넣는 자리. 쓰이지 않음
         self.visible = False
+        self._notifier = _make_notifier(app)
 
     def notify(self, message, title="PikaPet"):
-        """Post to Notification Center, without blocking the Tk event loop."""
-        try:
-            if _deliver_notification(message, title):
+        """Tk 이벤트 루프를 막지 않고 알림을 띄운다.
+
+        실제 발송은 macnotify가 한다. 번들로 묶였으면 모던 API로 이 앱 소유의
+        배너를 띄우고(눌렀을 때 PikaPet이 올라온다), 그게 거부되면 osascript로
+        떨어진다. 자세한 근거는 macnotify.py 참고.
+        """
+        if self._notifier is not None:
+            try:
+                self._notifier.notify(message, title)
                 return
-        except Exception:
-            pass
+            except Exception:
+                pass
         try:
-            script = 'display notification {} with title {}'.format(
-                _applescript_string(message), _applescript_string(title))
-            subprocess.Popen(["osascript", "-e", script],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            import macnotify
+
+            macnotify.post_with_osascript(message, title)
         except Exception:
             pass
 
     def update_menu(self):
-        """No-op: the right-click menu is rebuilt from scratch on every click."""
+        """할 일 없음. 우클릭 메뉴는 클릭마다 처음부터 다시 만들어진다."""
 
     def stop(self):
-        """No-op: there is no background tray thread to shut down."""
+        """할 일 없음. 내려야 할 백그라운드 트레이 스레드가 없다."""
 
 
-def _deliver_notification(message, title):
-    """Post a banner that belongs to this process. True if it went out.
+def _make_notifier(app):
+    """이 앱 소유로 알림을 띄우는 객체. 실패하면 None (osascript로 떨어진다)."""
+    root = getattr(app, "root", None)
+    if root is None:
+        return None
+    try:
+        import macnotify
 
-    `osascript -e 'display notification'` is the obvious way to do this, but the
-    banner it posts is owned by Script Editor, so clicking one -- a wild-Pokemon
-    alert, say -- brings up Script Editor instead of the pet. Going through the
-    framework directly keeps the banner attributed to the running interpreter,
-    so a click activates us and nothing else.
+        def on_click():
+            """배너를 눌렀을 때. Tk 타이머 안이라 게임을 직접 건드려도 된다."""
+            opener = getattr(app, "_open_pending_encounter", None)
+            if opener is not None and getattr(app, "_pending_encounter", None):
+                opener()
+                return
+            try:
+                app.root.deiconify()
+            except Exception:
+                pass
 
-    NSUserNotificationCenter has been deprecated since macOS 11 but still
-    delivers; the osascript path in `MacTray.notify` stays as the fallback for
-    the release where it finally stops.
-    """
-    from Foundation import NSUserNotification, NSUserNotificationCenter
-
-    center = NSUserNotificationCenter.defaultUserNotificationCenter()
-    if center is None:
-        return False
-    note = NSUserNotification.alloc().init()
-    note.setTitle_(str(title))
-    note.setInformativeText_(str(message))
-    center.deliverNotification_(note)
-    return True
-
-
-def _applescript_string(text):
-    """Quote a Python string for embedding in AppleScript source."""
-    escaped = str(text).replace("\\", "\\\\").replace('"', '\\"')
-    escaped = escaped.replace("\r", " ").replace("\n", " ")
-    return '"' + escaped + '"'
+        return macnotify.Notifier(root, on_click=on_click)
+    except Exception as exc:
+        print(f"  알림 초기화 실패: {type(exc).__name__}: {exc}", flush=True)
+        return None
 
 
 def install_window_patch(pet):
-    """Decide about transparency once PikaPet has built its real root window.
+    """PikaPet이 진짜 루트 창을 만든 뒤에 투명도를 결정한다.
 
-    main() calls setup_pet_window(root) just before constructing PetApp, which
-    is the first moment a Tk root exists and still the last moment before any
-    widget is created with bg=MAGIC.
+    main()은 PetApp을 만들기 바로 전에 setup_pet_window(root)를 부른다. Tk 루트가
+    처음 존재하는 순간이면서, bg=MAGIC으로 위젯이 만들어지기 전 마지막 순간이다.
     """
     original = pet.setup_pet_window
 
     def setup_pet_window(root):
-        transparent = transparency_is_available(root)
-        if transparent:
+        set_app_icon()
+        before = install_font_defaults(root)
+        if before and before != DEFAULT_FONT_SIZE:
+            print(f"  기본 폰트: {before} -> {DEFAULT_FONT_SIZE} "
+                  f"(버튼 폭이 문자 수 단위라 창이 넘치는 것을 막는다)", flush=True)
+        mode = transparency_mode(root)
+        if mode == "native":
+            # MAGIC은 게임 본래의 '#ff00ff'로 일부러 남겨둔다. 오버레이가 그것을
+            # "이 창은 투명해지고 싶다"는 표식으로 쓰는데, 거기엔 Tk의 지원이
+            # 전혀 필요하지 않다. 두 훅 모두 원본이 돌기 전에 걸려 있어야 한다.
+            # 원본의 마지막 줄이 root.config(bg=MAGIC), 바로 그 감시 대상이다.
+            import overlay
+
+            install_sprite_alpha_patch(transparent=True)
+            overlay.install(root, pet.MAGIC)
+        elif mode != "none":
             pet.MAGIC = "systemTransparent"
-            install_sprite_alpha_patch()
-        print("  transparency: "
-              + ("attribute accepted (Tk 9 still draws an opaque backdrop)"
-                 if transparent else "unavailable (opaque pet window)"),
-              flush=True)
+            install_sprite_alpha_patch(transparent=False)
+        print(f"  투명도: {TRANSPARENCY_NOTES[mode]}", flush=True)
         return original(root)
 
     pet.setup_pet_window = setup_pet_window
@@ -255,22 +745,54 @@ def install_tray_replacement(pet):
     def setup_tray(self):
         self._pystray = None
         self.tray_icon = MacTray(self)
+        install_menu_bar(self)
 
     setup_tray.__doc__ = MacTray.__doc__
     pet.PetApp.setup_tray = setup_tray
 
 
+def install_menu_bar(app):
+    """트레이에만 있던 동작을 메뉴 바 항목으로 되살린다.
+
+    `PetApp.build_menu`의 우클릭 메뉴가 트레이를 거의 다 덮지만, 셋이 빠진다:
+    `exit_ball`, `_open_pending_encounter`, `_restore_battle_window`. 그중
+    `exit_ball`이 없으면 펫이 몬스터볼에 들어간 순간 창이 숨어서 우클릭할 대상이
+    사라지고, 두 번 다시 꺼낼 수 없다. 야생 포켓몬 알림은 아예 트레이 아이콘을
+    클릭하라고 안내한다.
+
+    실패해도 게임은 그대로 돌아간다. setup_tray 안에서 예외가 나가면 PetApp 생성이
+    깨지므로 여기서 삼킨다.
+    """
+    root = getattr(app, "root", None)
+    if root is None:
+        print("  메뉴 바: self.root가 아직 없어 건너뜀", flush=True)
+        return None
+    try:
+        import mactray
+
+        if not mactray.available():
+            print("  메뉴 바: AppKit을 쓸 수 없어 건너뜀", flush=True)
+            return None
+        app._pikapet_menu_bar = mactray.install(app, root)
+        print("  메뉴 바: ◓ 항목 추가 (몬스터볼 꺼내기 / 야생 포켓몬 / 배틀 복구)",
+              flush=True)
+        return app._pikapet_menu_bar
+    except Exception as exc:
+        print(f"  메뉴 바 생성 실패: {type(exc).__name__}: {exc}", flush=True)
+        return None
+
+
 # --------------------------------------------------------------------------
-# 4. right-click
+# 4. 우클릭
 # --------------------------------------------------------------------------
 
 def install_right_click_fallback():
-    """Make <Button-3> bindings also fire on Tk builds where right is button 2.
+    """오른쪽이 버튼 2인 Tk 빌드에서도 <Button-3> 바인딩이 먹게 한다.
 
-    Tk 9 normalised mouse buttons across platforms -- `tk.tcl` maps
-    <<ContextMenu>> to <Button-3> for every windowing system -- so PikaPet's
-    existing binding already works there. Tk 8.6 on aqua reported right-click
-    as button 2, so on those builds the menu would never open.
+    Tk 9는 플랫폼별 마우스 버튼을 통일했다 — `tk.tcl`이 모든 윈도잉 시스템에서
+    <<ContextMenu>>를 <Button-3>으로 매핑한다 — 그래서 PikaPet의 기존 바인딩이
+    그대로 동작한다. aqua의 Tk 8.6은 우클릭을 버튼 2로 보고했으므로, 그런 빌드에서는
+    메뉴가 아예 열리지 않는다.
     """
     if tk.TkVersion >= 9.0:
         return False
@@ -288,14 +810,14 @@ def install_right_click_fallback():
 
 
 # --------------------------------------------------------------------------
-# loading pet.pyc
+# pet.pyc 로드
 # --------------------------------------------------------------------------
 
 def load_pet():
-    """Import pet.pyc as a module without running its __main__ block."""
+    """pet.pyc를 __main__ 블록 실행 없이 모듈로 import한다."""
     path = os.path.join(HERE, "pet.pyc")
     if not os.path.exists(path):
-        sys.exit(f"pet.pyc not found next to {__file__}")
+        sys.exit(f"{__file__} 옆에 pet.pyc가 없습니다")
     spec = importlib.util.spec_from_file_location("pet", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules["pet"] = module
@@ -305,23 +827,27 @@ def load_pet():
 
 def main():
     if sys.platform != "darwin":
-        sys.exit("pikapet_mac.py is for macOS; run pet.pyc directly elsewhere.")
+        sys.exit("pikapet_mac.py는 macOS용입니다. 다른 곳에서는 pet.pyc를 직접 실행하세요.")
 
-    sys.path.insert(0, HERE)        # so pet.pyc finds spriteanim.pyc
+    sys.path.insert(0, HERE)        # pet.pyc가 spriteanim.pyc를 찾도록
     install_save_paths()
 
     import maclayer
-    sys.modules["winlayer"] = maclayer   # before pet.pyc runs `import winlayer`
+    sys.modules["winlayer"] = maclayer   # pet.pyc가 `import winlayer`를 돌기 전에
 
     install_transparency_shim()
+    install_titlebar_restore()
+    install_glyph_fix()
+    install_button_colors()
+    install_app_icon_guard()
     remapped_buttons = install_right_click_fallback()
 
     pet = load_pet()
     install_window_patch(pet)
     install_tray_replacement(pet)
 
-    print(f"PikaPet on macOS | Tk {tk.TkVersion} | menu: right-click the pet"
-          + (" | Button-3 also bound to Button-2" if remapped_buttons else ""),
+    print(f"macOS PikaPet | Tk {tk.TkVersion} | 메뉴: 펫을 우클릭"
+          + (" | Button-3을 Button-2에도 연결" if remapped_buttons else ""),
           flush=True)
 
     pet.main()

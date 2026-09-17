@@ -1,22 +1,21 @@
-"""macOS implementation of PikaPet's `winlayer` API.
+"""PikaPet의 `winlayer` API를 macOS로 구현한 것.
 
-winlayer.py wraps the Win32 calls PikaPet needs in order to sit on top of other
-windows, walk along the taskbar and flash for attention. Every function there
-begins with `if not IS_WINDOWS: return <safe default>`, so the game already runs
-on macOS without any of it -- it just loses those behaviours. This module gives
-them back using Quartz and AppKit.
+winlayer.py는 펫이 다른 창 위에 앉고, 작업 표시줄을 따라 걷고, 주의를 끌려고
+깜빡이는 데 필요한 Win32 호출들을 감싼다. 그쪽 함수는 전부
+`if not IS_WINDOWS: return <안전한 기본값>`으로 시작하므로, 게임은 이것 없이도
+macOS에서 돌아간다 — 그 동작들만 잃는다. 이 모듈이 Quartz와 AppKit으로 그것들을
+되돌려준다.
 
-The launcher installs it as `sys.modules["winlayer"]` before pet.pyc is loaded,
-so the app's own `import winlayer` picks this up instead. pet.pyc never touches
-`winlayer.IS_WINDOWS`; it only calls the ten public functions, which is why a
-straight swap is safe.
+런처가 pet.pyc를 로드하기 전에 이 모듈을 `sys.modules["winlayer"]`로 심어두므로,
+앱 자신의 `import winlayer`가 이걸 집어간다. pet.pyc는 `winlayer.IS_WINDOWS`를
+전혀 건드리지 않고 공개 함수 열 개만 부르는데, 그래서 통째로 바꿔치기해도 안전하다.
 
-Coordinates match what Tk reports on macOS: points (not pixels), origin at the
-top-left of the display holding the menu bar, y growing downwards. AppKit's own
-origin is bottom-left, so anything read from NSScreen is flipped on the way out.
+좌표는 macOS의 Tk가 보고하는 것과 같다. 픽셀이 아니라 포인트이고, 원점은 메뉴 바가
+있는 디스플레이의 왼쪽 위이며, y는 아래로 자란다. AppKit의 원점은 왼쪽 아래이므로
+NSScreen에서 읽은 값은 내보내기 전에 뒤집는다.
 
-Like winlayer, nothing here raises: these run inside Tk timer callbacks, and a
-missing permission or an unplugged monitor must never take the pet down.
+winlayer처럼 여기서는 아무것도 예외를 던지지 않는다. 이 함수들은 Tk 타이머 콜백
+안에서 돌고, 권한이 없거나 모니터가 뽑혔다고 해서 펫이 죽어서는 안 된다.
 """
 
 import fcntl
@@ -35,21 +34,21 @@ except Exception:                                           # pragma: no cover
     Quartz = None
     _HAVE_PYOBJC = False
 
-# Windows sizes its taskbar in whole pixels and pet.pyc pastes these numbers
-# straight into Tk geometry strings, so every rect leaves here as ints.
+# Windows는 작업 표시줄 크기를 정수 픽셀로 재고, pet.pyc는 이 숫자들을 Tk geometry
+# 문자열에 그대로 끼워 넣는다. 그래서 모든 사각형은 int로 내보낸다.
 _MIN_LEDGE_WIDTH = 80
 _MIN_LEDGE_HEIGHT = 40
 
 
 # --------------------------------------------------------------------------
-# displays
+# 디스플레이
 # --------------------------------------------------------------------------
 
 def _display_bounds():
-    """Every active display as (left, top, width, height), top-left origin.
+    """활성 디스플레이 전부를 (left, top, width, height)로. 원점은 왼쪽 위.
 
-    CGDisplayBounds already works in the global display space that Tk uses, so
-    no flipping is needed here.
+    CGDisplayBounds는 이미 Tk가 쓰는 전역 디스플레이 좌표계로 동작하므로 여기서는
+    뒤집을 필요가 없다.
     """
     if not _HAVE_PYOBJC:
         return []
@@ -68,7 +67,7 @@ def _display_bounds():
 
 
 def get_virtual_screen_rect():
-    """Bounding box of all displays as (left, top, width, height)."""
+    """모든 디스플레이를 감싸는 사각형을 (left, top, width, height)로."""
     try:
         rects = _display_bounds()
         if not rects:
@@ -85,7 +84,7 @@ def get_virtual_screen_rect():
 
 
 def get_secondary_monitor_rect():
-    """The first non-primary display as (left, top, width, height)."""
+    """주 디스플레이가 아닌 첫 번째 디스플레이를 (left, top, width, height)로."""
     try:
         if not _HAVE_PYOBJC:
             return None
@@ -99,16 +98,15 @@ def get_secondary_monitor_rect():
 
 
 def _dock_rect_from_frames(frames, ref_height):
-    """Find the Dock from each screen's (frame, visibleFrame) pair.
+    """화면마다의 (frame, visibleFrame) 쌍에서 Dock을 찾아낸다.
 
-    `frames` holds AppKit geometry -- bottom-left origin, y growing upwards --
-    as ((fx, fy, fw, fh), (vx, vy, vw, vh)) per screen. `ref_height` is the
-    height of screens()[0], the origin of that coordinate space, and is what
-    the result is flipped against to reach Tk's top-left coordinates.
+    `frames`는 AppKit 좌표 — 왼쪽 아래 원점, y가 위로 자람 — 를 화면당
+    ((fx, fy, fw, fh), (vx, vy, vw, vh)) 로 담는다. `ref_height`는 그 좌표계의
+    원점인 screens()[0]의 높이이고, 결과를 Tk의 왼쪽 위 좌표로 뒤집는 기준이 된다.
 
-    Kept pure so the multi-monitor cases can be tested without unplugging
-    anything. Returns (left, top, right, bottom) or None when the Dock is
-    hidden. A lone inset at the top is the menu bar, not the Dock.
+    모니터를 뽑지 않고도 다중 모니터 경우를 테스트할 수 있도록 순수 함수로 두었다.
+    (left, top, right, bottom) 또는 Dock이 숨어 있을 때 None을 돌려준다. 위쪽에만
+    여백이 있으면 그건 Dock이 아니라 메뉴 바다.
     """
     for (fx, fy, fw, fh), (vx, vy, vw, vh) in frames:
         left_inset = vx - fx
@@ -117,7 +115,7 @@ def _dock_rect_from_frames(frames, ref_height):
         top_inset = (fy + fh) - (vy + vh)
 
         def flip(y):
-            """AppKit y (from the bottom) -> Tk y (from the top)."""
+            """AppKit의 y(아래부터) -> Tk의 y(위부터)."""
             return int(round(ref_height - y))
 
         if bottom_inset > 1:
@@ -132,11 +130,11 @@ def _dock_rect_from_frames(frames, ref_height):
 
 
 def get_taskbar_rect():
-    """The Dock's rectangle as (left, top, right, bottom).
+    """Dock의 사각형을 (left, top, right, bottom)로.
 
-    The Dock is the closest thing macOS has to the Windows taskbar: a reserved
-    strip the pet can stand on. Returns None when the Dock is set to auto-hide,
-    matching what winlayer does when it cannot find Shell_TrayWnd.
+    Dock은 macOS에서 Windows 작업 표시줄에 가장 가까운 것이다. 펫이 올라설 수 있는
+    예약된 띠. Dock이 자동 숨김으로 설정돼 있으면 None을 돌려주는데, winlayer가
+    Shell_TrayWnd를 못 찾았을 때와 같은 동작이다.
     """
     try:
         if not _HAVE_PYOBJC:
@@ -144,8 +142,8 @@ def get_taskbar_rect():
         screens = NSScreen.screens()
         if not screens:
             return None
-        # screens()[0] defines the origin of AppKit's coordinate space; the Dock
-        # itself may be on any screen, so every one of them is checked.
+        # screens()[0]이 AppKit 좌표계의 원점을 정한다. Dock 자체는 어느 화면에나
+        # 있을 수 있으므로 전부 확인한다.
         ref_height = screens[0].frame().size.height
         frames = []
         for s in screens:
@@ -158,15 +156,15 @@ def get_taskbar_rect():
 
 
 # --------------------------------------------------------------------------
-# other apps' windows -- the ledges the pet walks along
+# 다른 앱의 창 -- 펫이 걸어 다니는 선반
 # --------------------------------------------------------------------------
 
 def _list_windows():
-    """On-screen windows as dicts of pid/layer/title/left/top/right/bottom.
+    """화면에 있는 창들을 pid/layer/title/left/top/right/bottom 딕셔너리로.
 
-    `kCGWindowName` needs Screen Recording permission; without it macOS simply
-    omits the key, so the owning application's name is used instead. That is
-    enough for the exclude list and for the tooltip the pet shows.
+    `kCGWindowName`은 화면 기록 권한이 필요하다. 권한이 없으면 macOS가 그 키를
+    그냥 빼버리므로 대신 소유 애플리케이션 이름을 쓴다. 제외 목록과 펫이 보여주는
+    툴팁에는 그 정도면 충분하다.
     """
     if not _HAVE_PYOBJC:
         return []
@@ -197,10 +195,10 @@ def _list_windows():
 
 
 def _ledges_from_records(records, exclude_titles, max_windows, own_pid):
-    """Turn raw window records into winlayer's ledge dicts.
+    """원시 창 레코드를 winlayer의 선반 딕셔너리로 바꾼다.
 
-    Kept separate from the Quartz call so the filtering rules can be tested
-    without a screen or a permission prompt.
+    화면이나 권한 프롬프트 없이 필터 규칙을 테스트할 수 있도록 Quartz 호출과
+    분리해 두었다.
     """
     if max_windows is not None and max_windows <= 0:
         return []
@@ -209,11 +207,11 @@ def _ledges_from_records(records, exclude_titles, max_windows, own_pid):
     kept = []
     for r in records:
         if r["pid"] == own_pid:
-            continue                                  # never stand on ourselves
+            continue                                  # 자기 자신 위에는 올라서지 않는다
         if r["layer"] != 0:
-            continue                                  # Dock, menu bar, our own topmost pet
+            continue                                  # Dock, 메뉴 바, 우리 자신의 topmost 펫
         if r["right"] - r["left"] < _MIN_LEDGE_WIDTH:
-            continue                                  # Tk scatters 1px helper windows
+            continue                                  # Tk가 1px 보조 창을 흩뿌린다
         if r["bottom"] - r["top"] < _MIN_LEDGE_HEIGHT:
             continue
         title = r["title"]
@@ -222,14 +220,14 @@ def _ledges_from_records(records, exclude_titles, max_windows, own_pid):
         kept.append({"left": r["left"], "top": r["top"],
                      "right": r["right"], "title": title})
 
-    # Highest ledge first, so the pet's choice does not depend on the order
-    # Quartz happened to return windows in.
+    # 가장 높은 선반이 먼저 오게 한다. 펫의 선택이 Quartz가 우연히 돌려준 창 순서에
+    # 좌우되지 않도록.
     kept.sort(key=lambda l: (l["top"], l["left"]))
     return kept[:max_windows] if max_windows is not None else kept
 
 
 def get_window_ledges(exclude_titles=None, max_windows=40):
-    """Top edges of other apps' windows, as [{left, top, right, title}, ...]."""
+    """다른 앱 창들의 윗변을 [{left, top, right, title}, ...] 로."""
     try:
         return _ledges_from_records(_list_windows(), exclude_titles,
                                     max_windows, os.getpid())
@@ -238,7 +236,7 @@ def get_window_ledges(exclude_titles=None, max_windows=40):
 
 
 # --------------------------------------------------------------------------
-# desktop icons
+# 데스크톱 아이콘
 # --------------------------------------------------------------------------
 
 _ICON_SCRIPT = 'tell application "Finder" to get desktop position of every item of desktop window'
@@ -246,13 +244,13 @@ _icon_cache = None
 
 
 def get_desktop_icon_positions(max_icons=60):
-    """Screen positions of the Finder desktop icons, as [(x, y), ...].
+    """Finder 데스크톱 아이콘들의 화면 위치를 [(x, y), ...] 로.
 
-    Off by default. Unlike Windows, macOS has no way to read these without
-    driving Finder over AppleScript, which raises an Automation consent prompt
-    the first time and blocks until the user answers -- not something to do
-    from a timer callback. Set PIKAPET_DESKTOP_ICONS=1 to opt in; the result is
-    cached for the rest of the run so the prompt can only appear once.
+    기본은 꺼짐. Windows와 달리 macOS에는 AppleScript로 Finder를 조종하지 않고
+    이걸 읽는 방법이 없다. 그런데 그 호출은 처음에 자동화 동의 프롬프트를 띄우고
+    사용자가 답할 때까지 멈춘다 — 타이머 콜백에서 할 일이 아니다.
+    PIKAPET_DESKTOP_ICONS=1로 켤 수 있고, 결과는 실행이 끝날 때까지 캐시되므로
+    프롬프트는 한 번만 나올 수 있다.
     """
     global _icon_cache
     try:
@@ -273,7 +271,7 @@ def _read_desktop_icons():
                              capture_output=True, text=True, timeout=5)
         if out.returncode != 0:
             return []
-        # osascript prints a flat list: "12, 34, 12, 120, ..."
+        # osascript는 평평한 목록을 찍는다: "12, 34, 12, 120, ..."
         nums = [int(float(p)) for p in out.stdout.replace("\n", "").split(",") if p.strip()]
         return list(zip(nums[0::2], nums[1::2]))
     except Exception:
@@ -281,10 +279,10 @@ def _read_desktop_icons():
 
 
 # --------------------------------------------------------------------------
-# single instance
+# 단일 인스턴스
 # --------------------------------------------------------------------------
 
-# The same default winlayer ships, so both layers agree on the lock identity.
+# winlayer가 쓰는 것과 같은 기본값. 두 계층이 락의 정체에 대해 합의하도록.
 _DEFAULT_MUTEX = "PikaPetSingleInstanceMutex_do_bro2"
 
 _locks = {}
@@ -299,17 +297,17 @@ def _lock_dir():
 
 
 def acquire_single_instance_lock(name=_DEFAULT_MUTEX):
-    """True if this process may run, False if another instance already holds it.
+    """이 프로세스가 실행해도 되면 True, 다른 인스턴스가 이미 쥐고 있으면 False.
 
-    Uses flock, which the kernel drops when the process exits -- so a crashed
-    run cannot lock the user out, which a stale lock file would. Errors return
-    True: refusing to start because the lock itself broke would be worse than
-    briefly allowing two pets, and that is how winlayer behaves too.
+    flock을 쓴다. 커널이 프로세스 종료 시 알아서 풀어주므로, 죽은 실행이
+    사용자를 잠가버릴 수 없다 — 남아 있는 락 파일 방식이라면 그렇게 된다.
+    오류가 나면 True를 돌려준다. 락 자체가 깨졌다고 실행을 거부하는 것이 펫이
+    잠깐 둘이 되는 것보다 나쁘고, winlayer도 그렇게 동작한다.
     """
     try:
         with _lock_guard:
             if name in _locks:
-                return True                       # we already hold it
+                return True                       # 이미 우리가 쥐고 있다
             safe = "".join(c if c.isalnum() or c in "-._" else "_" for c in str(name))
             fd = os.open(os.path.join(_lock_dir(), safe + ".lock"),
                          os.O_CREAT | os.O_RDWR, 0o644)
@@ -318,31 +316,31 @@ def acquire_single_instance_lock(name=_DEFAULT_MUTEX):
             except OSError:
                 os.close(fd)
                 return False
-            _locks[name] = fd                     # keep the fd alive for the run
+            _locks[name] = fd                     # 실행 동안 fd를 살려둔다
             return True
     except Exception:
         return True
 
 
 # --------------------------------------------------------------------------
-# attention and Dock
+# 주의 끌기와 Dock
 # --------------------------------------------------------------------------
 
 _attention_request = None
 
 
 def set_dpi_aware():
-    """No-op. Tk on macOS already works in points and handles Retina itself."""
+    """할 일 없음. macOS의 Tk는 이미 포인트 단위로 동작하고 Retina를 스스로 처리한다."""
     return None
 
 
 def flash_taskbar(hwnd, count=8, interval_ms=500):
-    """Bounce the Dock icon to get the user's attention.
+    """Dock 아이콘을 튀게 해서 사용자의 주의를 끈다.
 
-    macOS decides how long to bounce, so `count` and `interval_ms` are accepted
-    for signature parity and ignored. AppKit must be touched from the main thread;
-    pet.pyc calls this from Tk callbacks, but the guard keeps a stray background
-    call from trapping the process the way pystray does.
+    얼마나 튈지는 macOS가 정하므로 `count`와 `interval_ms`는 시그니처를 맞추려고
+    받기만 하고 무시한다. AppKit은 메인 스레드에서 건드려야 한다. pet.pyc는 이걸
+    Tk 콜백에서 부르지만, 가드가 있어야 엉뚱한 백그라운드 호출이 pystray처럼
+    프로세스를 트랩에 빠뜨리지 않는다.
     """
     global _attention_request
     try:
@@ -356,7 +354,7 @@ def flash_taskbar(hwnd, count=8, interval_ms=500):
 
 
 def stop_taskbar_flash(hwnd):
-    """Stop the Dock bounce started by flash_taskbar."""
+    """flash_taskbar가 시작한 Dock 튀기를 멈춘다."""
     global _attention_request
     try:
         if _HAVE_PYOBJC and _attention_request is not None \
@@ -369,8 +367,8 @@ def stop_taskbar_flash(hwnd):
 
 
 def hide_window_from_taskbar(hwnd):
-    """No-op. macOS gives the whole process one Dock tile, not one per window,
-    so there is no per-window equivalent of the WS_EX_TOOLWINDOW trick winlayer
-    uses to keep the pet's helper windows out of the taskbar.
+    """할 일 없음. macOS는 창마다가 아니라 프로세스 전체에 Dock 타일 하나를 준다.
+    그래서 winlayer가 펫의 보조 창을 작업 표시줄에서 빼려고 쓰는
+    WS_EX_TOOLWINDOW 수법에 대응하는, 창 단위의 방법이 없다.
     """
     return None
