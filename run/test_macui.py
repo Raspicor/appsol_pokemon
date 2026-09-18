@@ -341,5 +341,116 @@ class ColourHelpers(unittest.TestCase):
             self.assertIsNone(L._explicit_color(name), name)
 
 
+class BarFraction(unittest.TestCase):
+    """체력바가 찬 비율. 게임이 넣는 값을 그대로 믿으면 막대가 삐져나간다."""
+
+    def test_normal(self):
+        self.assertAlmostEqual(L._bar_fraction(50, 100), 0.5)
+        self.assertAlmostEqual(L._bar_fraction(0, 100), 0.0)
+        self.assertAlmostEqual(L._bar_fraction(100, 100), 1.0)
+
+    def test_over_and_under_are_clamped(self):
+        # 과damage 로 음수가, 회복으로 최대 초과가 들어올 수 있다.
+        self.assertEqual(L._bar_fraction(-20, 100), 0.0)
+        self.assertEqual(L._bar_fraction(150, 100), 1.0)
+
+    def test_zero_maximum_does_not_divide(self):
+        self.assertEqual(L._bar_fraction(10, 0), 0.0)
+
+    def test_garbage_gives_empty(self):
+        for value, maximum in ((None, 100), ("얼마", 100), (10, None), (10, "많이")):
+            self.assertEqual(L._bar_fraction(value, maximum), 0.0, (value, maximum))
+
+
+class ProgressbarRouting(unittest.TestCase):
+    """aqua는 ttk Progressbar 의 색을 전부 무시하므로 직접 그리는 것으로 바꾼다.
+
+    다만 `ttk.Combobox` 는 건드리면 안 된다 -- 네이티브 드롭다운이 제대로
+    동작하고 있고, 테마를 바꾸면 그것까지 잃는다.
+    """
+
+    def setUp(self):
+        from tkinter import ttk
+
+        self.ttk = ttk
+        self.made = []
+        self.original = ttk.Progressbar
+        self.original_combo = ttk.Combobox
+
+        def fake_native(master=None, **kw):
+            self.made.append(("네이티브", kw))
+            return "네이티브 바"
+
+        def fake_ours(master=None, **kw):
+            self.made.append(("직접 그림", kw))
+            return "우리 바"
+
+        ttk.Progressbar = fake_native
+        self.addCleanup(setattr, ttk, "Progressbar", self.original)
+        self.addCleanup(setattr, L, "MacProgressBar", L.MacProgressBar)
+        L.MacProgressBar = fake_ours
+        L.install_progressbar_fix()
+
+    def test_progressbars_are_replaced(self):
+        self.ttk.Progressbar(None, length=210, maximum=39, value=39)
+        self.assertEqual(self.made[0][0], "직접 그림")
+
+    def test_the_options_are_passed_through(self):
+        self.ttk.Progressbar(None, length=210, maximum=39, value=12)
+        kw = self.made[0][1]
+        self.assertEqual((kw["length"], kw["maximum"], kw["value"]), (210, 39, 12))
+
+    def test_combobox_is_left_native(self):
+        self.assertIs(self.ttk.Combobox, self.original_combo)
+
+    def test_a_failure_falls_back_to_the_native_one(self):
+        # 검은 띠가 남은 체력바가, 앱이 안 뜨는 것보다 낫다.
+        def explode(master=None, **kw):
+            raise RuntimeError("안 됨")
+
+        L.MacProgressBar = explode
+        self.ttk.Progressbar(None, length=210)
+        self.assertEqual(self.made[0][0], "네이티브")
+
+
+class CornerGrip(unittest.TestCase):
+    """compact 전투 창 오른쪽 아래의 크기 조절 손잡이."""
+
+    def setUp(self):
+        self.made = []
+        original = tk.BaseWidget.__init__
+
+        def recorder(this, master, widgetName, cnf={}, kw={}, extra=()):
+            self.made.append((widgetName, dict(kw if kw else cnf)))
+
+        tk.BaseWidget.__init__ = recorder
+        self.addCleanup(setattr, tk.BaseWidget, "__init__", original)
+        L.install_contrast_fix()
+
+    def make(self, parent_bg, **kw):
+        tk.BaseWidget.__init__(object(), FakeParent(parent_bg), "label", {}, kw)
+        return self.made[-1][1]
+
+    def test_it_blends_into_a_light_window(self):
+        # 주황 사각형이 둥근 모서리에 잘려 조각처럼 보이던 것.
+        got = self.make("#fff6e0", text=L.CORNER_GRIP, bg="#e8a53a", fg="white")
+        self.assertEqual(got["bg"], "#fff6e0")
+        self.assertNotEqual(got["fg"], "white")
+
+    def test_the_glyph_stays(self):
+        # 기능이 있는 손잡이다. 지우면 창 크기를 못 바꾼다.
+        self.assertEqual(self.make("#fff6e0", text=L.CORNER_GRIP, bg="#e8a53a")["text"],
+                         L.CORNER_GRIP)
+
+    def test_a_dark_window_gets_a_lighter_glyph(self):
+        got = self.make("#1a1a1a", text=L.CORNER_GRIP, bg="#e8a53a", fg="white")
+        self.assertEqual(got["bg"], "#1a1a1a")
+        self.assertTrue(L._is_light(got["fg"]) is False or got["fg"] != "#1a1a1a")
+
+    def test_other_labels_keep_their_colour(self):
+        got = self.make("#fff6e0", text="야생 포켓몬", bg="#e8a53a", fg="white")
+        self.assertEqual(got["bg"], "#e8a53a")
+
+
 if __name__ == "__main__":
     unittest.main()

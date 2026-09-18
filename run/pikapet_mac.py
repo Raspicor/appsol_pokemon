@@ -717,11 +717,203 @@ def install_contrast_fix():
                     own = _explicit_color(options.get("bg", options.get("background")))
                     if own:
                         options["fg"] = "#111111" if _is_light(own) else "#f0f0f0"
+                # 창 모서리의 크기 조절 손잡이. 주황 사각형이 둥근 모서리에
+                # 잘려서 조각처럼 보이므로, 배경에 맞추고 글리프만 남긴다.
+                if options.get("text") == CORNER_GRIP:
+                    behind = _parent_background(master)
+                    if behind:
+                        options["bg"] = behind
+                        options["fg"] = (_shade(behind, 0.62) if _is_light(behind)
+                                         else _shade(behind, 1.8))
         except Exception:
             pass
         return original(self, master, widgetName, cnf, kw, extra)
 
     tk.BaseWidget.__init__ = __init__
+
+# --------------------------------------------------------------------------
+# 2-g. 체력바와 모서리 손잡이
+# --------------------------------------------------------------------------
+# **체력바.** 게임은 체력/경험치를 `ttk.Progressbar` 로 그린다. aqua의 그
+# 위젯은 네이티브 트랙을 6px 높이로만 그리고, 위젯의 남은 높이(16px 중 10px)를
+# 시스템 색으로 채운다. 다크 모드에서 그 색이 거의 검정이라, 크림색 창 위에
+# **얇은 파란 선 위아래로 검은 띠가 5px씩** 남는다. 실측한 세로 단면:
+#
+#     -1px (255,244,221)  <- 창 배경
+#     +0..+4px ( 28, 28, 28)   <- 검은 띠
+#     +5..+10px (  0,115,251)  <- 실제 게이지
+#     +11..+15px ( 28, 28, 28) <- 검은 띠
+#
+# ttk 스타일로는 못 고친다. background / troughcolor / bordercolor 를 어떻게
+# 조합해도 aqua는 전부 무시했다 (5가지 조합을 그려서 확인, 모두 동일한
+# (28,28,28)). 테마를 clam 으로 바꾸면 색이 먹지만 그러면 게임이 쓰는
+# `ttk.Combobox` 2개까지 네이티브 드롭다운을 잃는다. 그래서 Progressbar만
+# Tk로 직접 그리는 것으로 바꿔치운다. 게임이 쓰는 API는 length/maximum/value
+# 뿐이다 (11곳 전부 확인).
+#
+# **모서리 손잡이.** compact 전투 창 오른쪽 아래의 `⇲` 는 크기 조절 핸들이다
+# (pet.py:10070, cursor='sizing'). 헤더와 같은 주황(#e8a53a)인데, macOS는
+# 창 모서리를 둥글게 깎아서 그 주황 사각형이 잘려 나간 조각처럼 보인다.
+# Windows는 모서리가 각져서 깔끔하게 맞물린다. 기능은 그대로 두고 색만 창
+# 배경에 맞춰, 글리프만 은은하게 남긴다.
+
+BAR_HEIGHT = 16          # 네이티브와 같은 높이. 바꾸면 레이아웃이 밀린다.
+BAR_FILL = "#0073fb"     # 지금 화면에 나오던 그 파란색
+CORNER_GRIP = "\u21f2"   # ⇲
+
+
+def _bar_fraction(value, maximum):
+    """게이지가 찬 비율. 0.0 ~ 1.0.
+
+    게임은 체력을 그대로 넣기 때문에 음수나 최대 초과가 들어올 수 있다.
+    (전투 중 과damage, 회복 아이템 등) 잘라내지 않으면 채움 막대가 바 밖으로
+    삐져나간다.
+    """
+    try:
+        maximum = float(maximum)
+        if maximum <= 0:
+            return 0.0
+        return max(0.0, min(1.0, float(value) / maximum))
+    except Exception:
+        return 0.0
+
+
+class MacProgressBar(tk.Frame):
+    """ttk.Progressbar 대용. aqua가 ttk 색을 무시해서 직접 그린다.
+
+    게임 쪽에서는 구별되지 않아야 하므로 length/maximum/value 와
+    step()/start()/stop() 을 그대로 받는다.
+    """
+
+    def __init__(self, master=None, length=100, maximum=100, value=0,
+                 mode="determinate", orient="horizontal", style=None, **kw):
+        behind = _parent_background(master) or "#f2f2f2"
+        trough = _shade(behind, 0.90)
+        kw.pop("style", None)
+        kw.pop("variable", None)
+        super().__init__(master, width=int(length), height=BAR_HEIGHT,
+                         bg=trough, bd=0,
+                         highlightthickness=1,
+                         highlightbackground=_shade(behind, 0.72), **kw)
+        # 자식 때문에 크기가 변하지 않게 고정한다. 이게 없으면 채움 막대가
+        # 프레임 크기를 끌고 다닌다.
+        self.pack_propagate(False)
+        self.grid_propagate(False)
+
+        self._maximum = float(maximum) or 100.0
+        self._value = float(value)
+        self._length = int(length)
+        self._mode = mode
+        self._job = None
+
+        self._fill = tk.Frame(self, bg=BAR_FILL, bd=0, highlightthickness=0)
+        self._paint()
+
+    # -- 그리기 -------------------------------------------------------------
+
+    def _paint(self):
+        try:
+            fraction = _bar_fraction(self._value, self._maximum)
+            if fraction <= 0:
+                self._fill.place_forget()
+            else:
+                self._fill.place(x=0, y=0, relheight=1.0, relwidth=fraction)
+        except Exception:
+            pass
+
+    # -- ttk.Progressbar API ------------------------------------------------
+
+    def configure(self, cnf=None, **kw):
+        kw = dict(cnf or {}, **kw)
+        touched = False
+        if "value" in kw:
+            self._value = float(kw.pop("value") or 0); touched = True
+        if "maximum" in kw:
+            self._maximum = float(kw.pop("maximum") or 100); touched = True
+        if "mode" in kw:
+            self._mode = kw.pop("mode")
+        if "length" in kw:
+            self._length = int(kw.pop("length"))
+            tk.Frame.configure(self, width=self._length)
+            touched = True
+        for gone in ("style", "orient", "variable", "phase"):
+            kw.pop(gone, None)
+        if kw:
+            tk.Frame.configure(self, **kw)
+        if touched:
+            self._paint()
+        return None
+
+    config = configure
+
+    def cget(self, key):
+        if key == "value":
+            return self._value
+        if key == "maximum":
+            return self._maximum
+        if key == "mode":
+            return self._mode
+        if key == "length":
+            return self._length
+        return tk.Frame.cget(self, key)
+
+    def __setitem__(self, key, value):
+        self.configure(**{key: value})
+
+    def __getitem__(self, key):
+        return self.cget(key)
+
+    def step(self, amount=1.0):
+        self._value = (self._value + float(amount)) % (self._maximum or 100.0)
+        self._paint()
+
+    def start(self, interval=50):
+        """determinate 바를 스스로 채운다. ttk의 같은 이름과 같은 역할."""
+        self.stop()
+
+        def tick():
+            self.step(1.0)
+            try:
+                self._job = self.after(interval, tick)
+            except Exception:
+                self._job = None
+
+        try:
+            self._job = self.after(interval, tick)
+        except Exception:
+            self._job = None
+
+    def stop(self):
+        if self._job is not None:
+            try:
+                self.after_cancel(self._job)
+            except Exception:
+                pass
+            self._job = None
+
+
+def install_progressbar_fix():
+    """`ttk.Progressbar` 를 직접 그리는 것으로 바꿔치운다.
+
+    게임은 `from tkinter import ttk` 뒤에 `ttk.Progressbar(...)` 로 부르므로,
+    모듈 속성을 갈아끼우면 호출 시점에 그대로 걸린다. `ttk.Combobox` 는
+    건드리지 않는다 -- 그쪽은 네이티브 드롭다운이 제대로 동작한다.
+    """
+    from tkinter import ttk
+
+    original = ttk.Progressbar
+
+    def Progressbar(master=None, **kw):
+        try:
+            return MacProgressBar(master, **kw)
+        except Exception as exc:
+            print(f"  체력바 대체 실패, 기본 것으로 갑니다: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+            return original(master, **kw)
+
+    Progressbar.__doc__ = MacProgressBar.__doc__
+    ttk.Progressbar = Progressbar
+    return original
 
 # --------------------------------------------------------------------------
 # 3. 트레이 아이콘
@@ -974,6 +1166,7 @@ def main():
     install_glyph_fix()
     install_button_colors()
     install_contrast_fix()
+    install_progressbar_fix()
     install_app_icon_guard()
     remapped_buttons = install_right_click_fallback()
 
