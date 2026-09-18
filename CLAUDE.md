@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 131 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 143 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -80,7 +80,8 @@ with junctions, which need no admin rights.
 | `tools/make_icon.py` | Builds the app icon from `tools/icon.png`. |
 | `tools/pikapet.spec` | The PyInstaller spec that script drives. |
 | `tools/` | Unpackers, and a pycdc patched for Python 3.14. |
-| `README.md` | Full analysis: how the app works, what was found, why. |
+| `DEVELOPER.md` | Full analysis: how the app works, what was found, why. |
+| `README.md` | Install-and-use guide for people who download the dmg. Keep it non-technical. |
 
 ## Reading the game's code
 
@@ -253,6 +254,16 @@ notarization removes that step and nothing else does.
   foreground to `Black` and its bezel is always light, so deriving white text
   there would make it unreadable. Menu has no `-highlightbackground` at all --
   passing it makes widget creation fail.
+- **aqua ignores every ttk style colour on `TProgressbar`.** The native track
+  is 6px tall inside a 16px widget and the leftover height is filled with the
+  system colour -- a 5px black band above and below the gauge on the game's
+  cream battle window. `background`, `troughcolor`, `bordercolor`,
+  `lightcolor` and `darkcolor` were all measured to have no effect (five
+  combinations, all `(28,28,28)`). Switching the theme to `clam` would work
+  but would also strip the native look from the game's two `ttk.Combobox`
+  widgets, so `install_progressbar_fix()` swaps `ttk.Progressbar` for a
+  Tk-drawn `MacProgressBar` instead and leaves Combobox alone. The game only
+  uses `length`/`maximum`/`value`, checked across all 11 call sites.
 - **The pet stands still whenever a battle window is open, by design.**
   `_update_walk` (pet.py:9279) returns immediately on `self.battle_open`,
   while `Companion._step_free_roam` has no such check -- so companions keep
