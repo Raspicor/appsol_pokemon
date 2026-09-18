@@ -1239,6 +1239,92 @@ def install_starter_window_fix(pet):
     return original
 
 
+def install_pokedex_front_fix(pet):
+    """도감 창을 앞으로 올린다. 게임의 다른 큰 창들은 이미 스스로 올라온다.
+
+    게임 자신의 관례를 세어봤다: `Toplevel` 을 만드는 함수 54개 중 31개가 스스로
+    앞으로 올라오고, 대부분 `-topmost` 를 쓴다. `open_shop`, `open_mining`,
+    `open_gym_hub`, `open_titles_view`, `open_preset_editor`, `open_pvp_*` --
+    사용자가 열어서 보는 큰 창은 전부 한다. **`open_pokedex` (pet.py:15686) 만
+    빠져 있다**: `Toplevel` 을 만들고 `title` 과 `geometry` 만 부른다.
+
+    실측: 비활성 앱이 만든 평범한 Toplevel 은 layer 0 에 생겨 다른 앱의 일반 창
+    아홉 개 뒤에 깔렸고, `-topmost` 를 준 창은 layer 19 로 그 앞에 섰다. 펫 창은
+    `overrideredirect` 라 클릭해도 포커스를 가져오지 않으므로 PikaPet 은 보통
+    활성 앱이 아니다 -- 그래서 도감이 "간헐적으로" 안 보인다. 앞에 무엇이 떠
+    있는지에 달려 있다.
+
+    **`-topmost` 를 쓴다. 올리기만 해서는 부족하다.** 통제된 측정: 앞에 남의 창이
+    있는 상태에서 도감 창을 만들면 layer 0 에 남의 창 하나가 앞에 깔렸고,
+    `-topmost` 를 주자 layer 19 로 올라가 앞이 비었다. 그 상태에서 topmost 만
+    풀면 다시 남의 창이 앞에 왔다 -- `activateIgnoringOtherApps_` 와 `lift` 를
+    이미 부른 뒤였는데도 그렇다. 그래서 잠깐 올렸다가 푸는 방식은 쓰지 않는다.
+    게임이 `open_shop`, `open_gym_hub`, `open_titles_view`, `open_preset_editor`,
+    `open_pvp_*` 에 전부 `-topmost` 를 걸어둔 이유가 이것으로 보인다.
+
+    **창을 제목으로 찾지 않는다.** `open_pokedex` 는 창을 `self` 에 저장하지
+    않으므로 (`STORE_ATTR` 없음) 호출 전후의 루트 자식 목록을 비교해 새로 생긴
+    것을 올린다. 게임의 문자열 상수에 기대지 않는 편이 낫다.
+    """
+    original = getattr(getattr(pet, "PetApp", None), "open_pokedex", None)
+    if original is None:
+        print("  도감 창 보정 건너뜀: open_pokedex 가 없습니다", flush=True)
+        return None
+
+    def open_pokedex(self, *args, **kwargs):
+        root = getattr(self, "root", None)
+        before = _toplevel_names(root)
+        result = original(self, *args, **kwargs)
+        for window in _new_toplevels(root, before):
+            raise_window(window)
+            # 창이 매핑된 뒤 한 번 더. 선택 창과 같은 이유다.
+            try:
+                root.after(300, lambda win=window: raise_window(win))
+            except Exception:
+                pass
+        return result
+
+    pet.PetApp.open_pokedex = open_pokedex
+    return original
+
+
+def raise_window(win):
+    """창을 다른 앱 창 앞으로 올린다. 게임이 자기 창들에 하는 것과 같은 방식.
+
+    `-topmost` 가 핵심이다 -- 실측에서 활성화와 `lift` 만으로는 앞에 있던 남의
+    창을 넘지 못했고, `-topmost` 를 주자 layer 19 로 올라가 앞이 비었다.
+    """
+    done = False
+    try:
+        win.attributes("-topmost", True)
+        done = True
+    except Exception as exc:
+        print(f"  창 올리기(topmost) 실패: {type(exc).__name__}: {exc}", flush=True)
+    try:
+        bring_to_front(win)
+        done = True
+    except Exception as exc:
+        print(f"  창 올리기(활성화) 실패: {type(exc).__name__}: {exc}", flush=True)
+    return done
+
+
+def _toplevel_names(root):
+    """루트의 자식 창 이름 모음. 실패하면 빈 집합."""
+    try:
+        return {str(child) for child in root.winfo_children()}
+    except Exception:
+        return set()
+
+
+def _new_toplevels(root, before):
+    """`before` 이후에 생긴 자식 창들. 만든 순서대로."""
+    try:
+        return [child for child in root.winfo_children()
+                if str(child) not in before]
+    except Exception:
+        return []
+
+
 def install_window_patch(pet):
     """PikaPet이 진짜 루트 창을 만든 뒤에 투명도를 결정한다.
 
@@ -1811,6 +1897,7 @@ def main():
     install_window_patch(pet)
     install_tray_replacement(pet)
     install_starter_window_fix(pet)
+    install_pokedex_front_fix(pet)
     install_sprite_load_log(pet)
 
     print(f"macOS PikaPet | Tk {tk.TkVersion} | 메뉴: 펫을 우클릭"

@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 291 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 302 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -560,6 +560,42 @@ notarization removes that step and nothing else does.
   `install_message_wording()` for `messagebox`, whose text is not a widget
   option. `MacTray.notify` applies it as well, so what `notify.log` records is
   what the user was actually shown.
+- **Right-clicking a companion opens the *main* pet's menu, by design.**
+  `Companion.on_right_click` (pet.py:4166-4174) is three lines:
+  `try: self.owner.build_menu() except Exception: pass`, and
+  `PetApp.build_menu(self)` takes no target argument -- there is no per-pet
+  menu anywhere in the game. `build_menu` posts at
+  `winfo_pointerx/winfo_pointery`, so the menu appears over the companion that
+  was clicked while its contents belong to pet 1, which is what makes it look
+  like a bug. The only companion-facing entry in that menu is
+  `📖 도감 보기 / 동료 장착`. Companions *do* have their own press/motion/release
+  handlers (dragging one rewrites `state['companion_layout']`), so the
+  right-click delegation is deliberate, not an oversight in the port. Answer
+  such reports with the line numbers rather than "probably"; changing it would
+  mean giving companions a menu the original never had.
+- **`open_pokedex` is the one view window that does not raise itself.** Counted
+  across the disassembly: 54 functions create a `Toplevel` and **31 raise
+  themselves**, almost all with `-topmost`. Every other user-opened view does
+  it -- `open_shop`, `open_mining`, `open_gym_hub`, `open_titles_view`,
+  `open_preset_editor`, `open_pvp_lobby/help/history/battle`. `open_pokedex`
+  (pet.py:15686) calls only `title` and `geometry`, and never stores the window
+  on `self` (no `STORE_ATTR` at all). Since the pet window is
+  `overrideredirect` and never takes focus, PikaPet is usually not the active
+  app, so its new `Toplevel` opens at window layer 0 -- behind whatever the user
+  has in front. That is the "간헐적으로 도감 창이 안 보인다" report: it depends
+  on what happens to be in front.
+  **`-topmost` is what actually raises it; `lift` plus
+  `activateIgnoringOtherApps_` is not enough.** Measured in a controlled run
+  with another app's window in front: the fresh window sat at layer 0 with one
+  window ahead of it; `-topmost` moved it to layer 19 with nothing ahead; and
+  clearing `-topmost` afterwards -- *after* the activation had already
+  happened -- put that window back in front. So a raise-then-release trick does
+  not work, which is presumably why the game leaves `-topmost` on.
+  `install_pokedex_front_fix()` therefore does what the sibling windows do.
+  It finds the window by diffing `root.winfo_children()` across the call rather
+  than by matching the `'포켓몬 도감'` title, because the title is a game string
+  and the child list is not. `_ask_dex_replace_choice` (the slot-replacement
+  dialog) already sets `-topmost` and `grab_set`, so it is left alone.
 - **A wild encounter can fire seconds after launch.** `_last_encounter_at`
   starts at 0 (pet.py:4611), so the 25s `ENCOUNTER_COOLDOWN` is already
   satisfied on the first tick and the 0.6%/s roll starts immediately -- every
