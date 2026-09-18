@@ -1017,6 +1017,177 @@ class SpriteLoadLog(unittest.TestCase):
         self.assertIn("스프라이트 모듈", self.diag[0][1])
 
 
+class PokedexFrontFix(unittest.TestCase):
+    """도감 창만 앞으로 올라오는 처리가 빠져 있다.
+
+    게임 자신의 관례를 세어봤다: Toplevel 을 만드는 함수 54개 중 31개가 스스로
+    앞으로 올라온다 (대부분 `-topmost`). `open_shop`, `open_mining`,
+    `open_gym_hub`, `open_titles_view`, `open_preset_editor`, `open_pvp_*` --
+    큰 창은 전부 한다. **`open_pokedex` (pet.py:15686) 만 빠져 있다**: Toplevel
+    을 만들고 `title` 과 `geometry` 만 부르며, 창을 `self` 에 저장하지도 않는다.
+
+    실측한 결과: 비활성 앱이 만든 평범한 Toplevel 은 layer 0 에 생겨 다른 앱의
+    일반 창 9개 뒤에 깔렸다. `-topmost` 를 준 창은 layer 19 로 그 앞에 섰다.
+    펫 창은 `overrideredirect` 라 포커스를 가져오지 않으므로 PikaPet 은 보통
+    활성 앱이 아니다 -- 그래서 "간헐적으로" 안 보인다.
+
+    창을 제목으로 찾지 않는다. 호출 전후의 자식 목록을 비교해 새로 생긴 것을
+    올린다 -- 게임의 문자열에 기대지 않는 편이 낫다.
+    """
+
+    class FakeWindow:
+        def __init__(self, name, boom=False):
+            self.name = name
+            self.boom = boom
+            self.attrs = []
+
+        def __str__(self):
+            return self.name
+
+        def attributes(self, *args):
+            if self.boom:
+                raise RuntimeError("이 Tk 는 topmost 를 모른다")
+            self.attrs.append(args)
+
+    class FakeRoot:
+        def __init__(self, children=()):
+            self.children = list(children)
+            self.scheduled = []
+
+        def winfo_children(self):
+            return list(self.children)
+
+        def after(self, _ms, fn):
+            self.scheduled.append(fn)
+
+    def setUp(self):
+        self.fronted = []
+        self.original_front = L.bring_to_front
+        self.addCleanup(setattr, L, "bring_to_front", self.original_front)
+        L.bring_to_front = lambda win: self.fronted.append(win)
+
+    def _pet(self, opens=None):
+        """`PetApp.open_pokedex` 를 가진 가짜 게임 모듈."""
+        calls = []
+
+        def open_pokedex(app, *args, **kw):
+            calls.append((args, kw))
+            if opens is not None:
+                app.root.children.append(opens)
+            return "속값"
+
+        pet = type("M", (), {})()
+        pet.PetApp = type("PetApp", (), {"open_pokedex": open_pokedex})
+        return pet, calls
+
+    def test_a_new_window_is_brought_to_the_front(self):
+        window = self.FakeWindow(".dex")
+        pet, calls = self._pet(opens=window)
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot()
+        app.open_pokedex()
+        self.assertEqual(self.fronted, [window])
+
+    def test_topmost_is_what_actually_raises_it(self):
+        # 실측: 활성화와 lift 만으로는 앞에 있던 남의 창을 넘지 못했다.
+        window = self.FakeWindow(".dex")
+        pet, _ = self._pet(opens=window)
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot()
+        app.open_pokedex()
+        self.assertEqual(window.attrs, [("-topmost", True)])
+
+    def test_a_tk_without_topmost_still_gets_activated(self):
+        window = self.FakeWindow(".dex", boom=True)
+        pet, _ = self._pet(opens=window)
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot()
+        self.assertEqual(app.open_pokedex(), "속값")
+        self.assertEqual(self.fronted, [window])
+
+    def test_the_return_value_and_arguments_pass_through(self):
+        pet, calls = self._pet(opens=self.FakeWindow(".dex"))
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot()
+        self.assertEqual(app.open_pokedex("더", key=1), "속값")
+        self.assertEqual(calls, [(("더",), {"key": 1})])
+
+    def test_windows_that_were_already_open_are_left_alone(self):
+        # 배틀 창이나 상점이 열려 있는데 그것을 올리면 도감이 가려진다.
+        old = self.FakeWindow(".battle")
+        new = self.FakeWindow(".dex")
+        pet, _ = self._pet(opens=new)
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot([old])
+        app.open_pokedex()
+        self.assertEqual(self.fronted, [new])
+
+    def test_no_new_window_raises_nothing(self):
+        pet, _ = self._pet(opens=None)
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot([self.FakeWindow(".battle")])
+        app.open_pokedex()
+        self.assertEqual(self.fronted, [])
+
+    def test_it_tries_again_once_the_window_is_mapped(self):
+        # 선택 창에서와 같은 이유다: 첫 시도는 매핑 전에 묻힐 수 있다.
+        window = self.FakeWindow(".dex")
+        pet, _ = self._pet(opens=window)
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot()
+        app.open_pokedex()
+        self.assertEqual(len(app.root.scheduled), 1)
+        self.fronted.clear()
+        app.root.scheduled[0]()
+        self.assertEqual(self.fronted, [window])
+
+    def test_a_failure_to_raise_does_not_break_the_window(self):
+        # 창이 뒤에 열리는 것이 도감이 아예 안 열리는 것보다 낫다.
+        def boom(win):
+            raise RuntimeError("화면 정보 없음")
+
+        L.bring_to_front = boom
+        pet, _ = self._pet(opens=self.FakeWindow(".dex"))
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot()
+        self.assertEqual(app.open_pokedex(), "속값")
+
+    def test_a_missing_root_is_survived(self):
+        pet, _ = self._pet(opens=None)
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = None
+        self.assertEqual(app.open_pokedex(), "속값")
+
+    def test_a_game_without_the_method_is_left_alone(self):
+        pet = type("M", (), {})()
+        pet.PetApp = type("PetApp", (), {})
+        self.assertIsNone(L.install_pokedex_front_fix(pet))
+        self.assertFalse(hasattr(pet.PetApp, "open_pokedex"))
+
+    def test_the_last_of_several_new_windows_ends_up_on_top(self):
+        first, second = self.FakeWindow(".a"), self.FakeWindow(".b")
+        pet = type("M", (), {})()
+
+        def open_pokedex(app, *a, **k):
+            app.root.children.extend([first, second])
+
+        pet.PetApp = type("PetApp", (), {"open_pokedex": open_pokedex})
+        L.install_pokedex_front_fix(pet)
+        app = pet.PetApp()
+        app.root = self.FakeRoot()
+        app.open_pokedex()
+        self.assertEqual(self.fronted[-1], second)
+
+
 class WindowsWording(unittest.TestCase):
     """게임의 안내 문구는 macOS 에 없는 것을 가리킨다.
 
