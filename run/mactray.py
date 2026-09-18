@@ -28,6 +28,29 @@ import collections
 # 100 ms면 즉각적으로 느껴지고, 틱 비용도 무시할 수 있다.
 DRAIN_MS = 100
 
+# macOS 시스템 폰트에는 U+2694(⚔)의 쓸 만한 텍스트 글리프가 없다. 실측(메뉴 폰트
+# .AppleSystemUIFont 13pt): 그냥 ⚔ 는 잉크 26px / 폭 7.8pt 로 × 의 26px / 8.1pt 와
+# 사실상 같아서 '⚔ 배틀 창 복구'가 '× 배틀 창 복구'로 읽힌다. VS16(U+FE0F)을 붙이면
+# Apple Color Emoji 가 받아 77px / 19.0pt 가 된다.
+#
+# pikapet_mac 의 install_glyph_fix 는 `tkinter.Misc._options` 에 걸려 있어 여기까지
+# 닿지 않는다 -- NSMenuItem 의 제목은 tkinter 를 거치지 않는다. 그래서 메뉴 제목을
+# 만드는 이 한 곳에서 따로 고친다.
+BROKEN_GLYPHS = {"\u2694": "\u2694\ufe0f"}
+
+
+# 수동 버전 확인 항목의 이름. 런처와 테스트가 같은 문자열을 봐야 하므로 여기 둔다.
+VERSION_CHECK_LABEL = "🔄 새 버전 확인"
+
+
+def menu_title(label):
+    """메뉴에 실제로 넣을 제목. 깨져 보이는 기호만 고친다."""
+    for bad, good in BROKEN_GLYPHS.items():
+        if bad in label and good not in label:
+            label = label.replace(bad, good)
+    return label
+
+
 _target_class = None
 
 
@@ -96,7 +119,7 @@ class MenuBarItem:
                 self.menu.addItem_(NSMenuItem.separatorItem())
                 continue
             entry = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-                label, b"invoke:", "")
+                menu_title(label), b"invoke:", "")
             entry.setTarget_(self.target)
             entry.setTag_(index)
             entry.setEnabled_(True)
@@ -125,7 +148,7 @@ class MenuBarItem:
             return None
         self.actions.append((label, fn))
         entry = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            label, b"invoke:", "")
+            menu_title(label), b"invoke:", "")
         entry.setTarget_(self.target)
         entry.setTag_(len(self.actions) - 1)
         entry.setEnabled_(True)
@@ -159,12 +182,22 @@ class MenuBarItem:
             pass
 
 
-def install(app, root):
-    """`app`(PetApp)의 트레이 전용 동작을 메뉴 바에 붙인다.
+def menu_actions(app, version_check=None):
+    """메뉴에 넣을 (이름, 함수) 목록. `None` 이름은 구분선이다.
+
+    목록을 만드는 일만 한다 -- AppKit 없이 테스트할 수 있게. 메뉴에 무엇이
+    들어가고 무엇이 빠지는지가 이 파일에서 가장 자주 틀리는 부분이다.
 
     우클릭 메뉴에 이미 있는 것은 넣지 않는다. 다만 '화면 중앙으로 부르기'는
     예외로 둔다. 펫이 화면 밖으로 걸어 나가면 우클릭할 수 없어서, 볼에 들어간
     것과 같은 막다른 길이 되기 때문이다.
+
+    `version_check` 는 런처가 넘겨준다 (macupdate 를 아는 쪽이 거기라서).
+    없으면 그 항목은 빠진다.
+
+    '알림 테스트'는 뺐다. ad-hoc 서명에서는 배너가 늘 스크립트 편집기 소유로
+    뜨기 때문에, 눌러봐도 "PikaPet 알림이 되는가"에 답을 주지 못한다. 진단에는
+    도움이 됐지만 쓰는 사람에게는 잘못된 결과를 보여주는 항목이었다.
     """
     def call(name):
         def run():
@@ -175,27 +208,22 @@ def install(app, root):
             fn()
         return run
 
-    def test_notification():
-        """알림이 실제로 뜨는지, 그리고 누르면 어디로 가는지 확인하는 용도.
-
-        알림은 조용히 실패하기 쉬운 영역이다 (권한, 집중 모드, 프레임워크가
-        받아놓고 안 띄우는 경우). 눌러볼 수 있는 자리를 하나 두는 편이
-        "왜 안 오지"를 훨씬 빨리 끝낸다.
-        """
-        icon = getattr(app, "tray_icon", None)
-        if icon is None:
-            print("  tray_icon이 없습니다", flush=True)
-            return
-        icon.notify("알림 테스트입니다. 이 배너를 눌러보세요.", "PikaPet")
-
     actions = [
         ("🔴 몬스터볼에서 꺼내기", call("exit_ball")),
         ("🌿 야생 포켓몬 확인", call("_open_pending_encounter")),
         ("⚔ 배틀 창 복구", call("_restore_battle_window")),
         (None, None),
         ("🎯 화면 중앙으로 부르기", call("force_recall")),
-        ("🔔 알림 테스트", test_notification),
+    ]
+    if version_check is not None:
+        actions.append((VERSION_CHECK_LABEL, version_check))
+    actions += [
         (None, None),
         ("❌ 종료", call("quit_app")),
     ]
-    return MenuBarItem(root, actions)
+    return actions
+
+
+def install(app, root, version_check=None):
+    """`app`(PetApp)의 트레이 전용 동작을 메뉴 바에 붙인다."""
+    return MenuBarItem(root, menu_actions(app, version_check))

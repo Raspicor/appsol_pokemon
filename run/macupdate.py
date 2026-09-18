@@ -128,12 +128,18 @@ class UpdateCheck:
 
     `on_update(latest_tag, url)` 은 새 버전이 있을 때만 불린다. Tk 메인 스레드
     안이므로 위젯을 건드려도 된다.
+
+    `on_result(latest_tag, is_new)` 를 주면 그것이 대신 불리고, **결과가 무엇이든
+    한 번 불린다** (최신일 때도, 조회에 실패해 tag 가 None 일 때도). 사람이 메뉴에서
+    직접 확인을 눌렀을 때 쓴다 -- 눌렀는데 아무 반응이 없으면 고장으로 보인다.
     """
 
-    def __init__(self, root, current_version, on_update, fetch=None):
+    def __init__(self, root, current_version, on_update, fetch=None,
+                 on_result=None):
         self.root = root
         self.current = current_version
         self.on_update = on_update
+        self.on_result = on_result
         self.fetch = fetch or fetch_latest_tag
         self.results = collections.deque()
         self.done = False
@@ -169,10 +175,12 @@ class UpdateCheck:
             return
         self.done = True
         tag = self.results.popleft()
-        if tag is None or not is_newer(tag, self.current):
-            return
+        newer = is_newer(tag, self.current)
         try:
-            self.on_update(tag, RELEASES_URL)
+            if self.on_result is not None:
+                self.on_result(tag, newer)
+            elif newer:
+                self.on_update(tag, RELEASES_URL)
         except Exception as exc:
             print(f"  업데이트 안내 실패: {type(exc).__name__}: {exc}", flush=True)
 

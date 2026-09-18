@@ -280,5 +280,79 @@ class ReadingOurOwnVersion(unittest.TestCase):
         self.assertEqual(macupdate.app_version(), "0.0.9")
 
 
+class ManualCheck(unittest.TestCase):
+    """메뉴에서 사람이 직접 누른 확인.
+
+    자동 확인과 달리 **결과가 무엇이든 한 번은 알려야 한다.** 최신이어서
+    조용하거나 조회에 실패해서 조용하면, 누른 사람에게는 둘 다 '고장'으로
+    보인다.
+    """
+
+    def setUp(self):
+        self.root = FakeRoot()
+        self.seen = []
+
+    def make(self, latest, current="0.0.4"):
+        return macupdate.UpdateCheck(
+            self.root, current, None,
+            fetch=lambda: latest,
+            on_result=lambda tag, newer: self.seen.append((tag, newer)))
+
+    def test_a_newer_release_is_reported_as_new(self):
+        check = self.make("0.0.5")
+        check._work()
+        check.drain()
+        self.assertEqual(self.seen, [("0.0.5", True)])
+
+    def test_being_up_to_date_is_still_reported(self):
+        check = self.make("0.0.4")
+        check._work()
+        check.drain()
+        self.assertEqual(self.seen, [("0.0.4", False)])
+
+    def test_a_failed_fetch_is_still_reported(self):
+        check = self.make(None)
+        check._work()
+        check.drain()
+        self.assertEqual(self.seen, [(None, False)])
+
+    def test_an_unknown_own_version_is_not_called_an_update(self):
+        # 소스에서 돌면 app_version()이 None이다. 그걸 '새 버전 있음'으로
+        # 읽으면 매번 업데이트하라고 뜬다.
+        check = self.make("0.0.5", current=None)
+        check._work()
+        check.drain()
+        self.assertEqual(self.seen, [("0.0.5", False)])
+
+    def test_on_update_is_not_also_called(self):
+        # 두 경로가 같이 불리면 안내가 두 번 나간다.
+        also = []
+        check = macupdate.UpdateCheck(
+            self.root, "0.0.4", lambda tag, url: also.append(tag),
+            fetch=lambda: "0.0.5",
+            on_result=lambda tag, newer: self.seen.append(tag))
+        check._work()
+        check.drain()
+        self.assertEqual(self.seen, ["0.0.5"])
+        self.assertEqual(also, [])
+
+    def test_a_broken_reporter_does_not_escape(self):
+        check = macupdate.UpdateCheck(
+            self.root, "0.0.4", None, fetch=lambda: "0.0.5",
+            on_result=lambda tag, newer: (_ for _ in ()).throw(RuntimeError()))
+        check._work()
+        check.drain()                       # 예외가 새어 나오면 실패
+
+    def test_the_startup_path_is_unchanged(self):
+        # on_result 를 안 주면 예전처럼 새 버전일 때만 알린다.
+        told = []
+        check = macupdate.UpdateCheck(self.root, "0.0.4",
+                                      lambda tag, url: told.append(tag),
+                                      fetch=lambda: "0.0.4")
+        check._work()
+        check.drain()
+        self.assertEqual(told, [])
+
+
 if __name__ == "__main__":
     unittest.main()

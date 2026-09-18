@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import tkinter as tk
 
+import mactray
 import pikapet_mac as L
 
 
@@ -450,6 +451,101 @@ class CornerGrip(unittest.TestCase):
     def test_other_labels_keep_their_colour(self):
         got = self.make("#fff6e0", text="야생 포켓몬", bg="#e8a53a", fg="white")
         self.assertEqual(got["bg"], "#e8a53a")
+
+
+class MenuBarGlyphs(unittest.TestCase):
+    """메뉴 바 항목의 ⚔.
+
+    install_glyph_fix 는 `tkinter.Misc._options` 에 걸려 있어서 NSMenuItem 의
+    제목에는 닿지 않는다. 실제로 메뉴 바의 '⚔ 배틀 창 복구'가 '× 배틀 창 복구'로
+    보였다. mactray 가 제목을 만드는 자리에서 따로 고친다.
+    """
+
+    def test_the_sword_gets_the_emoji_selector(self):
+        self.assertEqual(mactray.menu_title("⚔ 배틀 창 복구"),
+                         "\u2694\ufe0f 배틀 창 복구")
+
+    def test_it_is_not_applied_twice(self):
+        once = mactray.menu_title("⚔ 배틀 창 복구")
+        self.assertEqual(mactray.menu_title(once), once)
+
+    def test_other_labels_are_untouched(self):
+        # ⬇ ◓ 🔴 🌿 🎯 🔔 은 그냥 그려진다. 이모지로 바꾸면 모양만 달라진다.
+        for label in ("🔴 몬스터볼에서 꺼내기", "🌿 야생 포켓몬 확인",
+                      "🎯 화면 중앙으로 부르기", "🔔 알림 테스트", "❌ 종료",
+                      "⬇ 새 버전 0.0.5 받기"):
+            self.assertEqual(mactray.menu_title(label), label)
+
+    def test_every_shipped_menu_label_survives(self):
+        # 실제로 쓰는 이름들이 그대로 통과하는지. 빈 문자열이 나오면 메뉴가 빈다.
+        for label in ("⚔ 배틀 창 복구", "🔴 몬스터볼에서 꺼내기", "❌ 종료"):
+            self.assertTrue(mactray.menu_title(label).strip())
+
+
+class MenuBarContents(unittest.TestCase):
+    """◓ 메뉴에 무엇이 들어가고 무엇이 빠지는가.
+
+    이 파일에서 가장 자주 틀리는 부분이라 목록을 직접 본다. `menu_actions` 는
+    AppKit을 쓰지 않으므로 화면 없이 확인할 수 있다.
+    """
+
+    class FakeApp:
+        def __init__(self):
+            self.called = []
+
+        def __getattr__(self, name):
+            def fn():
+                self.called.append(name)
+            return fn
+
+    def labels(self, **kw):
+        app = self.FakeApp()
+        return [label for label, _ in mactray.menu_actions(app, **kw)]
+
+    def test_the_three_tray_only_actions_are_there(self):
+        # 이 셋이 빠지면 포트가 기능을 잃는다. exit_ball 은 특히 치명적이다.
+        labels = self.labels()
+        for needle in ("몬스터볼에서 꺼내기", "야생 포켓몬 확인", "배틀 창 복구"):
+            self.assertTrue(any(l and needle in l for l in labels), needle)
+
+    def test_the_notification_test_is_gone(self):
+        # ad-hoc 서명에서는 배너가 늘 스크립트 편집기 소유라, 눌러봐도
+        # 'PikaPet 알림이 되는가'에 답을 주지 못했다.
+        self.assertFalse(any(l and "알림 테스트" in l for l in self.labels()))
+
+    def test_the_version_check_appears_only_when_given(self):
+        self.assertIn(mactray.VERSION_CHECK_LABEL,
+                      self.labels(version_check=lambda: None))
+        self.assertNotIn(mactray.VERSION_CHECK_LABEL, self.labels())
+
+    def test_quit_is_last(self):
+        labels = [l for l in self.labels(version_check=lambda: None) if l]
+        self.assertIn("종료", labels[-1])
+
+    def test_separators_never_sit_next_to_each_other(self):
+        # version_check 가 없으면 구분선 두 개가 붙을 수 있다.
+        for kw in ({}, {"version_check": lambda: None}):
+            labels = self.labels(**kw)
+            self.assertIsNotNone(labels[0], kw)
+            self.assertIsNotNone(labels[-1], kw)
+            for a, b in zip(labels, labels[1:]):
+                self.assertFalse(a is None and b is None, kw)
+
+    def test_the_actions_call_the_game(self):
+        app = self.FakeApp()
+        for label, fn in mactray.menu_actions(app):
+            if label is not None:
+                fn()
+        self.assertIn("exit_ball", app.called)
+        self.assertIn("_restore_battle_window", app.called)
+
+    def test_a_missing_game_method_does_not_raise(self):
+        class Bare:
+            pass
+
+        for label, fn in mactray.menu_actions(Bare()):
+            if label is not None:
+                fn()                        # 예외가 나가면 메뉴가 죽는다
 
 
 if __name__ == "__main__":
