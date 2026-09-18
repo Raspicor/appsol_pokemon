@@ -88,6 +88,8 @@ def main():
         check("run/macnotify.py 존재", os.path.isfile(os.path.join(RUN, "macnotify.py")))
         check("run/macupdate.py 존재", os.path.isfile(os.path.join(RUN, "macupdate.py")),
               "없으면 새 버전이 나와도 알려주지 않는다")
+        check("run/macupgrade.py 존재", os.path.isfile(os.path.join(RUN, "macupgrade.py")),
+              "없으면 새 버전을 앱이 직접 설치하지 못하고 직접 내려받아야 한다")
         try:
             import UserNotifications  # noqa: F401
             check("pyobjc UserNotifications import 가능", True)
