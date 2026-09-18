@@ -1056,13 +1056,104 @@ def install_menu_bar(app):
         if not mactray.available():
             print("  메뉴 바: AppKit을 쓸 수 없어 건너뜀", flush=True)
             return None
-        app._pikapet_menu_bar = mactray.install(app, root)
-        print("  메뉴 바: ◓ 항목 추가 (몬스터볼 꺼내기 / 야생 포켓몬 / 배틀 복구)",
-              flush=True)
+        app._pikapet_menu_bar = mactray.install(
+            app, root, version_check=make_version_check(app))
+        print("  메뉴 바: ◓ 항목 추가 (몬스터볼 꺼내기 / 야생 포켓몬 / 배틀 복구"
+              " / 버전 확인)", flush=True)
         return app._pikapet_menu_bar
     except Exception as exc:
         print(f"  메뉴 바 생성 실패: {type(exc).__name__}: {exc}", flush=True)
         return None
+
+
+def _show_version_result(app, current, tag, newer):
+    """수동 확인의 결과를 알린다. Tk 메인 스레드 안이므로 위젯을 써도 된다.
+
+    알림 배너가 아니라 대화상자를 쓴다. ad-hoc 서명에서는 배너가 스크립트 편집기
+    소유로 떠서 눌러도 엉뚱한 곳이 열리기 때문이다 (macnotify.py 참고).
+    """
+    from tkinter import messagebox
+
+    import macupdate
+
+    if tag is None:
+        messagebox.showwarning(
+            "PikaPet",
+            "새 버전을 확인할 수 없습니다.\n\n"
+            "인터넷 연결을 확인하고 잠시 뒤에 다시 시도해 주세요.")
+        return
+
+    if newer:
+        if messagebox.askyesno(
+                "PikaPet",
+                # 조사를 쓰지 않는다. '0.0.5 이/가', '0.0.1 이/가' 처럼
+                # 버전 숫자를 읽는 방식에 따라 갈려서 어느 쪽도 늘 맞지 않는다.
+                "새 버전이 나왔습니다.\n\n"
+                f"지금 쓰는 것: {current}\n"
+                f"가장 최신: {tag}\n\n"
+                "받는 곳을 열까요?"):
+            macupdate.open_releases_page()
+        # 나중에 다시 찾을 수 있게 메뉴에도 남겨둔다.
+        menu = getattr(app, "_pikapet_menu_bar", None)
+        if menu is not None:
+            menu.add_action(f"⬇ 새 버전 {tag} 받기",
+                            lambda: macupdate.open_releases_page())
+        return
+
+    if current is None:
+        # 번들이 아니면 자기 버전을 못 읽는다 -- NSBundle이 Homebrew의 Python.app
+        # 을 가리켜서 3.14.7 이 나온다 (macupdate.app_version 참고).
+        messagebox.showinfo(
+            "PikaPet",
+            f"가장 최신 릴리스는 {tag} 입니다.\n\n"
+            "실행 중인 버전은 읽을 수 없습니다.")
+        return
+
+    messagebox.showinfo("PikaPet", f"최신 버전입니다. ({current})")
+
+
+def make_version_check(app):
+    """메뉴 바의 '🔄 새 버전 확인'이 부를 함수. 만들 수 없으면 None.
+
+    자동 확인(`install_update_check`)과 다른 점이 셋이다:
+
+      * **번들이 아니어도 동작한다.** 사람이 직접 누른 것이라 방해가 아니다.
+      * **최신이거나 실패했을 때도 결과를 보여준다.** 눌렀는데 아무 일도
+        일어나지 않으면 고장난 것으로 보인다.
+      * 알림이 아니라 대화상자로 알린다.
+
+    **네트워크는 데몬 스레드가 한다.** 이 함수는 mactray의 Tk 타이머 안에서
+    불리므로, 여기서 응답을 기다리면 그 몇 초 동안 게임이 멈춘다.
+    """
+    root = getattr(app, "root", None)
+    if root is None:
+        return None
+    try:
+        import macupdate
+    except Exception as exc:
+        print(f"  수동 버전 확인 불가: {type(exc).__name__}: {exc}", flush=True)
+        return None
+
+    busy = []
+
+    def run():
+        if busy:                      # 여러 번 눌러도 조회는 하나만
+            return
+        busy.append(True)
+        current = macupdate.app_version()
+
+        def finished(tag, newer):
+            busy.clear()
+            _show_version_result(app, current, tag, newer)
+
+        try:
+            macupdate.UpdateCheck(root, current, None,
+                                  on_result=finished).start()
+        except Exception as exc:
+            busy.clear()
+            print(f"  버전 확인 실패: {type(exc).__name__}: {exc}", flush=True)
+
+    return run
 
 
 def install_update_check(app):
@@ -1096,7 +1187,7 @@ def install_update_check(app):
                                 lambda: macupdate.open_releases_page(url))
             icon = getattr(app, "tray_icon", None)
             if icon is not None:
-                icon.notify(f"새 버전 {tag}이 나왔어요. "
+                icon.notify(f"새 버전이 나왔어요: {tag}. "
                             f"메뉴 바 ◓ 에서 받을 수 있어요.", "PikaPet")
 
         check = macupdate.UpdateCheck(root, current, on_update)
