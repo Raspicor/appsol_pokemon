@@ -17,7 +17,9 @@ $APPDATA/PikaPet 로 전환한다 (pet.py:33~50). 원래 이 앱이 PyInstaller 
 run/pet_state.json 에 중복 저장되던 문제도 여기서는 일어나지 않는다.
 """
 
+import glob
 import os
+import sysconfig
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, os.pardir))
 RUN = os.path.join(ROOT, "run")
@@ -33,6 +35,43 @@ datas = [
 for name in ("assets", "assets_v3", "assets_v4", "badges_trainer"):
     datas.append((os.path.join(ROOT, name), name))
 
+# **C 확장은 최상위에 직접 넣어야 하는 것이 있다.** hiddenimports 에 적어도
+# PyInstaller 는 pyexpat 을 CArchive TOC 에 등록하지 않고, 프레임워크 트리의
+# python3__dot__14/lib-dynload 안에만 둔다. 그 폴더 이름은 PyInstaller 가 바꿔
+# 놓은 것이라 파이썬의 정상 탐색 경로가 아니어서 `import pyexpat` 이 기계에 따라
+# 실패한다 -- 빌드한 맥(26.5)에서는 되고 macOS 26.2 에서는 안 됐다.
+#
+# 번들 최상위(= sys._MEIPASS)는 sys.path 에 들어 있고 표준 확장 로더가 거기서
+# .so 를 읽는다. `_tkinter.so` 가 이미 그렇게 놓여 정상 동작하는 것이 근거다.
+binaries = []
+_dynload = sysconfig.get_config_var("DESTSHARED")
+for _name in ("pyexpat", "_elementtree"):
+    _found = glob.glob(os.path.join(_dynload or "", _name + "*.so"))
+    if not _found:
+        raise SystemExit(
+            f"{_name} 확장을 찾을 수 없습니다 ({_dynload}). "
+            "이게 없으면 AnimData.xml 을 못 읽어 이미지가 전부 안 나옵니다.")
+    binaries.append((_found[0], "."))
+
+# **expat 은 우리 것을 들고 간다.** Homebrew 의 python@3.14 는
+# --with-system-expat 으로 빌드돼서 pyexpat 이 /usr/lib/libexpat.1.dylib 에
+# 링크하는데, 그 시스템 라이브러리는 macOS 버전마다 내용이 다르다. 실측:
+# 26.5 에서 빌드한 pyexpat 은 _XML_SetAllocTrackerActivationThreshold 와
+# _XML_SetAllocTrackerMaximumAmplification (expat 2.7.2+ API) 을 요구하는데
+# macOS 26.2 의 시스템 expat 에는 그 심볼이 없다. 그러면 dyld 가 적재를
+# 거부하고, ElementTree 가 그 실패를 "No module named expat" 로 덮어써서
+# 게임의 모든 이미지가 사라진다 -- 원인을 찾는 데 한참 걸렸다.
+#
+# 여기서 파일만 넣고, 참조를 @loader_path 로 돌리는 것은 make_dmg.sh 가 한다
+# (PyInstaller 는 /usr/lib 의존성을 시스템 것으로 보고 손대지 않는다).
+_expat = "/opt/homebrew/opt/expat/lib/libexpat.1.dylib"
+if not os.path.exists(_expat):
+    raise SystemExit(
+        f"{_expat} 가 없습니다. `brew install expat` 이 필요합니다 -- "
+        "시스템 expat 에 링크된 채로 배포하면 다른 macOS 버전에서 "
+        "이미지가 전부 사라집니다.")
+binaries.append((_expat, "."))
+
 hiddenimports = [
     # pet.pyc가 import하는 것 전부 (disasm/pet.dis.txt의 IMPORT_NAME)
     "asyncio", "base64", "colorsys", "json", "math", "queue", "random",
@@ -40,8 +79,19 @@ hiddenimports = [
     "tkinter", "tkinter.ttk", "tkinter.messagebox",
     "PIL", "PIL.Image", "PIL.ImageTk", "PIL.ImageDraw", "PIL.ImageFont",
     "pystray", "websockets",
-    # spriteanim.pyc가 추가로 쓰는 것
-    "xml.etree.ElementTree",
+    # spriteanim.pyc가 추가로 쓰는 것. **expat 까지 손으로 적어야 한다.**
+    # ElementTree 는 `from xml.parsers import expat` 을 try 안에서 늦게 하므로
+    # PyInstaller 의 정적 분석이 따라가지 못하고, pyexpat 이 CArchive TOC 에
+    # 등록되지 않는다. 그러면 번들 안에 .so 파일이 프레임워크 트리로 딸려오기는
+    # 하지만 (python3__dot__14/lib-dynload -- 이름이 바뀌어 있어 파이썬의 정상
+    # 탐색 경로가 아니다) `import pyexpat` 이 기계에 따라 실패한다.
+    #
+    # 실제로 그렇게 됐다. 빌드한 맥(26.5)에서는 되고 macOS 26.2 에서는
+    #   ImportError: No module named expat; use SimpleXMLTreeBuilder instead
+    # 가 나면서 스프라이트가 하나도 안 읽혔다 -- 모든 스프라이트 폴더가
+    # AnimData.xml 로 시작하기 때문에 이미지가 전부 사라진다. 앱의 나머지는
+    # 멀쩡하게 돌아서 고장으로 보이지도 않는다.
+    "xml.etree.ElementTree", "xml.parsers.expat", "pyexpat", "_elementtree",
     # 우리 쪽 모듈. winlayer 자리에 들어가는 maclayer는 런처가 import하므로
     # 분석에 잡히지만, 명시해두는 편이 안전하다.
     "maclayer", "overlay", "mactray", "macnotify", "macupdate", "macupgrade",
@@ -61,7 +111,7 @@ excludes = [
 analysis = Analysis(
     [os.path.join(RUN, "pikapet_mac.py")],
     pathex=[RUN],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

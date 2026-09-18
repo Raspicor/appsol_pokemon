@@ -64,6 +64,20 @@ if ! "$PY314" -c 'import tkinter' >/dev/null 2>&1; then
 fi
 echo "    tkinter 정상 ($("$PY314" -c 'import tkinter; print("Tk", tkinter.TkVersion)'))"
 
+# expat: .dmg 를 만들 때만 필요하다. Homebrew 의 python@3.14 는
+# --with-system-expat 으로 빌드돼서 pyexpat 이 /usr/lib/libexpat.1.dylib 에
+# 링크하는데, 그 시스템 라이브러리는 macOS 버전마다 내용이 다르다. 실측:
+# 26.5 에서 빌드한 pyexpat 은 expat 2.7.2+ 의 _XML_SetAllocTracker* 심볼을
+# 요구하고 macOS 26.2 의 것에는 없다. 그러면 XML 을 못 읽어 게임의 이미지가
+# 전부 사라지는데, 앱의 나머지는 멀쩡히 돌아서 알아차리기 어렵다.
+# tools/make_dmg.sh 가 이 라이브러리를 번들에 넣고 링크를 거기로 돌린다.
+if [ ! -f /opt/homebrew/opt/expat/lib/libexpat.1.dylib ]; then
+  say "expat 설치 (dmg 빌드에 필요)"
+  brew install expat || warn "expat 설치 실패. tools/make_dmg.sh 가 멈춥니다."
+else
+  echo "    expat 있음 (dmg 빌드용)"
+fi
+
 # --------------------------------------------------------------------------
 # 2. virtualenv
 # --------------------------------------------------------------------------
