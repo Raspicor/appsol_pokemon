@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 143 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 161 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -127,7 +127,15 @@ All in `run/pikapet_mac.py`. Do not "simplify" these without reading the reason.
    there is nothing left to right-click and the pet can never come out. The
    wild-Pokémon notification even tells the user to click the tray icon. So
    `mactray.py` puts those three (plus a recall and quit) in a real NSStatusItem,
-   created on Tk's main thread, which needs no run loop of its own. Its menu
+   created on Tk's main thread, which needs no run loop of its own. The menu's
+   contents come from `mactray.menu_actions()`, a plain function with no AppKit
+   in it so the list can be tested without a display -- what is in that menu is
+   the thing that breaks most often. It also carries `🔄 새 버전 확인`, whose
+   callback the launcher supplies (`make_version_check`), because macupdate is
+   the launcher's business. There used to be a `🔔 알림 테스트` item; it was
+   removed because under ad-hoc signing the banner always belongs to Script
+   Editor, so pressing it answered a different question than the one a user
+   asks. Its menu
    actions are AppKit callbacks, so they only enqueue -- see the Tcl rule below.
 
 5. **The magenta plate → `overlay.py`** — every sprite frame is pasted onto a
@@ -173,6 +181,28 @@ Without an Apple Developer certificate the app is only ad-hoc signed, so
 Gatekeeper blocks it on another Mac until the user right-click-opens it once.
 `PIKAPET_SIGN_ID=...` signs with a real identity instead.
 
+## The update check
+
+Two paths, both in `macupdate.py`, and they differ on purpose.
+
+The **startup** check (`install_update_check`) runs once, only in a bundle, and
+stays silent unless there is something newer. That silence is the point -- a
+notice on every launch would be noise -- but it also means a pet left running
+for days never learns about a release. That is not hypothetical: 0.0.4 was
+started 20 minutes before 0.0.5 was published and correctly showed nothing.
+
+The **manual** check (`make_version_check`, the `🔄 새 버전 확인` item) exists
+for that gap. It differs in three ways: it works outside a bundle, it reports
+*every* outcome including "you are up to date" and "could not reach GitHub"
+(a menu item that does nothing when pressed reads as broken), and it answers in
+a `messagebox` rather than a notification, since an ad-hoc banner opens Script
+Editor. `UpdateCheck(on_result=...)` is what makes reporting every outcome
+possible; without it only the newer case is delivered.
+
+Both run the request on a daemon thread and deliver through a Tk timer -- the
+menu action already runs inside `_drain`, so waiting for the network there
+would freeze the game for up to `TIMEOUT_SEC`.
+
 ## Releasing
 
 The repo is public (`Raspicor/appsol_pokemon`), so GitHub Releases is the
@@ -202,6 +232,19 @@ reason.
     upload dist/PikaPet-0.0.3.dmg to the release
     git checkout develop && git merge main
 
+### Release notes are for players, not for us
+
+Keep them short and non-technical: no file or function names, no measurements,
+no framework names, no explanation of why something broke. The 0.0.5 note is
+the shape and the ceiling -- a one-line summary, `## 업데이트 내역` as a few
+bolded bullets of what the player will *notice*, `## 설치` (drag to
+Applications, the Gatekeeper step, the `xattr` line, where the menus are, a
+link to the README), and `## 알려진 제한`.
+
+Write what changed on screen ("체력바에 남아 있던 검은 띠를 없앴습니다"), not
+what changed in the code. The analysis belongs in `DEVELOPER.md`, the
+mechanics here.
+
 Gatekeeper is the real friction, not the download. An ad-hoc signed app needs
 the recipient to go to System Settings > Privacy & Security > "Open Anyway" --
 since macOS 15 right-click-open no longer covers it. A Developer ID plus
@@ -228,6 +271,12 @@ notarization removes that step and nothing else does.
   goes on `tkinter.Misc._options`, the single choke point every widget option
   passes through (`Widget.__init__`, `Misc.configure`, `Menu.add`,
   `Canvas._create`).
+  That hook cannot reach the menu bar: `NSMenuItem`'s title never passes
+  through tkinter, so `⚔ 배틀 창 복구` showed up as `× 배틀 창 복구` in the ◓
+  menu. `mactray.menu_title()` applies the same substitution where the
+  NSMenuItem titles are built. Measured in the menu font
+  (.AppleSystemUIFont 13pt): bare ⚔ is 26 ink px at 7.8pt and `×` is 26 px
+  at 8.1pt -- indistinguishable; with VS16 it is 77 px at 19.0pt.
 - **aqua's `tk.Button` throws `-background` away.** No combination of `bd=0`,
   `relief=flat` or `highlightthickness=0` brings it back;
   `highlightbackground` only rings the button. Just 8 of the game's 181
