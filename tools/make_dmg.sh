@@ -159,6 +159,16 @@ for path in pet.pyc spriteanim.pyc assets assets_v3 assets_v4 badges_trainer; do
   fi
 done
 [ "$missing" -eq 0 ] || die "번들에 $missing 개가 빠졌습니다."
+
+# pet.pyc 는 sys._MEIPASS(= Contents/Frameworks) 아래에서 에셋을 찾는데, 거기의
+# assets 는 ../Resources/assets 를 가리키는 심볼릭 링크다. 링크가 끊기면 앱은
+# 멀쩡히 돌면서 스프라이트만 하나도 안 읽힌다 -- 선택 창에 '(이미지 없음)' 이
+# 뜨고 펫이 안 보인다. 실제로 신고된 증상이라 여기서 실물까지 확인한다.
+for path in assets/sprites assets_v3 assets_v4 badges_trainer; do
+  [ -d "$APP/Contents/Frameworks/$path" ] || \
+    die "Frameworks/$path 가 풀리지 않습니다 (심볼릭 링크 끊김). 이미지가 안 나옵니다."
+done
+echo "    Frameworks 에서 에셋 링크 4개 정상"
 echo "    크기: $(du -sh "$APP" | cut -f1)"
 
 # --------------------------------------------------------------------------
@@ -190,7 +200,11 @@ STAGE="$BUILD/dmg"
 say "DMG 만들기"
 rm -rf "$STAGE" "$DMG"
 mkdir -p "$STAGE"
-cp -R "$APP" "$STAGE/"
+# ditto 로 복사한다. cp -R 은 확장 속성을 떨어뜨려서 서명 검증이 깨질 수 있고,
+# 여기서 만들어지는 사본이 곧 사람들이 받는 것이다. (에셋은 Frameworks 에서
+# ../Resources 를 가리키는 상대 심볼릭 링크로 연결돼 있는데, 그 링크가 사라지면
+# 앱은 멀쩡히 돌면서 이미지만 전부 사라진다. 실측으로 재현했다.)
+ditto "$APP" "$STAGE/PikaPet.app"
 ln -s /Applications "$STAGE/Applications"
 
 hdiutil create \

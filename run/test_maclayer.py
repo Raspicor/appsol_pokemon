@@ -10,14 +10,39 @@ pet.pyc는 winlayer를 함수 열 개로 부르고 반환값을 바로 풀어 �
 import importlib.util
 import inspect
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import maclayer  # noqa: E402
+
+
+# 락 테스트는 실제로 flock 을 잡는다. 그리고 `maclayer._lock_dir()` 은 APPDATA 를
+# 읽으므로, 손대지 않으면 pikapet-selftest-*.lock 네 개가
+# ~/Library/Application Support/PikaPet/ -- **실제 사용자의 폴더** -- 에 남는다.
+# 실제로 남아 있었다. 여기서 APPDATA 를 임시 폴더로 돌린다. 교차 프로세스
+# 테스트가 띄우는 자식도 환경을 물려받으므로 같은 임시 폴더를 본다.
+_appdata_home = None
+
+
+def setUpModule():
+    global _appdata_home
+    _appdata_home = (os.environ.get("APPDATA"), tempfile.mkdtemp())
+    os.environ["APPDATA"] = _appdata_home[1]
+
+
+def tearDownModule():
+    original, tmp = _appdata_home
+    if original is None:
+        os.environ.pop("APPDATA", None)
+    else:
+        os.environ["APPDATA"] = original
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _load_winlayer_pyc():
