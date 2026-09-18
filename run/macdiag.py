@@ -176,6 +176,16 @@ def log_images(dirs=()):
         pil = f"PIL {getattr(PIL, '__version__', '버전 모름')}"
     except Exception as exc:
         pil = f"PIL 을 못 씁니다: {type(exc).__name__}: {exc}"
+    # **파서를 어디서 가져왔는지 적는다.** 번들 안이 아니라 빌드한 기계의
+    # 파이썬에서 가져오고 있으면, 그 기계에서만 되고 받는 사람에게서는
+    # ImportError 가 난다. 실제로 그렇게 됐다 -- pyexpat 이 번들 최상위에 없어서
+    # macOS 26.2 에서 AnimData.xml 을 하나도 못 읽었다.
+    try:
+        import pyexpat
+
+        parser = f"XML 파서 {getattr(pyexpat, '__file__', '경로 모름')}"
+    except Exception as exc:
+        parser = f"XML 파서를 못 씁니다: {type(exc).__name__}: {exc}"
     dirs = list(dirs)
     if not dirs:
         where = "스프라이트 폴더 목록을 못 읽었습니다"
@@ -184,7 +194,48 @@ def log_images(dirs=()):
         where = f"스프라이트 폴더 {len(dirs) - len(missing)}/{len(dirs)} 있음"
         if missing:
             where += f" (없음: {missing[0]})"
-    return log(f"이미지 준비: {pil} | {where}")
+    return log(f"이미지 준비: {pil} | {parser} | {where}")
+
+
+def log_sprite_probe(folder):
+    """스프라이트 한 벌을 실제로 읽어보고 결과를 남긴다.
+
+    **왜 게임을 기다리지 않는가.** 선택 창은 세이브에 포켓몬이 없을 때만 나오므로
+    (pet.py:19063), 한 번 고른 사람에게서는 `(이미지 없음)` 을 다시 볼 기회가
+    없다. 그러면 "이미지가 안 나온다"를 확인할 방법이 사라진다. 그래서 켤 때마다
+    `AnimSet` 이 하는 두 가지를 직접 해본다 -- `ET.parse(AnimData.xml)` 과
+    `Image.open(...).load()` (spriteanim.AnimSet.__init__ 57~58줄).
+
+    `load()` 까지 부르는 것이 핵심이다. `open()` 은 헤더만 읽어서, 디코더가
+    없거나 파일이 깨진 것은 `load()` 에서야 드러난다.
+    """
+    if not folder:
+        return log("이미지 시험: 스프라이트 폴더를 못 정했습니다")
+    parts = []
+    try:
+        import xml.etree.ElementTree as ET
+
+        xml_path = os.path.join(folder, "AnimData.xml")
+        root = ET.parse(xml_path).getroot()
+        parts.append(f"AnimData.xml OK ({len(root.findall('.//Anim'))} 개)")
+    except Exception as exc:
+        return log(f"이미지 시험 실패: AnimData.xml -- "
+                   f"{type(exc).__name__}: {exc} | {folder}")
+    try:
+        from PIL import Image
+
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".png"))
+        if not names:
+            return log(f"이미지 시험 실패: {folder} 에 png 가 없습니다 | "
+                       + " | ".join(parts))
+        png = os.path.join(folder, names[0])
+        with Image.open(png) as image:
+            image.load()
+            parts.append(f"{names[0]} OK ({image.width}x{image.height} {image.mode})")
+    except Exception as exc:
+        return log(f"이미지 시험 실패: png 디코딩 -- "
+                   f"{type(exc).__name__}: {exc} | " + " | ".join(parts))
+    return log("이미지 시험: " + " | ".join(parts) + f" | {folder}")
 
 
 def log_phase(name):

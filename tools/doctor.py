@@ -92,6 +92,11 @@ def main():
               "없으면 새 버전을 앱이 직접 설치하지 못하고 직접 내려받아야 한다")
         check("run/macdiag.py 존재", os.path.isfile(os.path.join(RUN, "macdiag.py")),
               "없으면 시작이 어떻게 흘러갔는지 나중에 알 수 없다")
+        # dmg 빌드 전용. 없으면 시스템 expat 에 링크된 앱이 나가고, 다른 macOS
+        # 버전에서 XML 을 못 읽어 이미지가 전부 사라진다.
+        check("expat (dmg 빌드용)",
+              os.path.isfile("/opt/homebrew/opt/expat/lib/libexpat.1.dylib"),
+              "`brew install expat`. 앱 실행에는 필요 없고 .dmg 를 만들 때만 쓴다")
         try:
             import UserNotifications  # noqa: F401
             check("pyobjc UserNotifications import 가능", True)

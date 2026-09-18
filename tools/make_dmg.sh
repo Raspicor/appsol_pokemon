@@ -56,14 +56,30 @@ if [ -z "$VERSION" ]; then
   VERSION="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || true)"
   [ -n "$VERSION" ] || die "태그가 하나도 없습니다. 태그를 만들거나 --version 으로 지정하세요."
   VERSION="${VERSION#v}"                      # v0.0.2 로 달아도 받아준다
-  if git -C "$ROOT" describe --tags --exact-match >/dev/null 2>&1; then
-    LABEL="$VERSION"
+fi
+
+# 배포본인지 아닌지는 VERSION 을 어떻게 얻었는지와 무관하다. 태그 위에 정확히
+# 서 있고, 커밋되지 않은 변경이 하나도 없을 때만 릴리스다. 둘 중 하나라도
+# 어긋나면 파일 이름에 그 사실을 적는다 -- 이름이 릴리스와 같으면 나중에 어느
+# 쪽인지 알 방법이 없고, 실제로 그렇게 섞인 번들을 한 번 배포했다.
+#
+# --version 으로 숫자를 직접 준 경우에도 똑같이 본다. 릴리스는 태그에서 나오고
+# (CLAUDE.md), --version 은 그 밖의 빌드를 위한 것이다.
+LABEL="$VERSION"
+if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  DIRTY="$(git -C "$ROOT" status --porcelain 2>/dev/null)"
+  if git -C "$ROOT" describe --tags --exact-match >/dev/null 2>&1 && [ -z "$DIRTY" ]; then
+    :                                          # 릴리스. 이름은 숫자만
   else
-    LABEL="$VERSION+$(git -C "$ROOT" rev-parse --short HEAD)"
-    warn "HEAD가 태그 $VERSION 위가 아닙니다. 배포본이 아닌 빌드로 표시합니다: $LABEL"
+    SUFFIX="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo nogit)"
+    [ -z "$DIRTY" ] || SUFFIX="$SUFFIX-dirty"
+    LABEL="$VERSION+$SUFFIX"
+    if [ -n "$DIRTY" ]; then
+      warn "커밋되지 않은 변경이 있습니다. 배포본이 아닌 빌드로 표시합니다: $LABEL"
+    else
+      warn "HEAD가 태그 위에 정확히 서 있지 않습니다. 배포본이 아닌 빌드로 표시합니다: $LABEL"
+    fi
   fi
-else
-  LABEL="$VERSION"
 fi
 echo "    버전 $VERSION (빌드 이름: $LABEL)"
 
@@ -169,6 +185,53 @@ for path in assets/sprites assets_v3 assets_v4 badges_trainer; do
     die "Frameworks/$path 가 풀리지 않습니다 (심볼릭 링크 끊김). 이미지가 안 나옵니다."
 done
 echo "    Frameworks 에서 에셋 링크 4개 정상"
+
+# XML 파서가 모듈로 수집됐는지 본다. spriteanim 은 스프라이트마다 AnimData.xml
+# 을 읽으므로, pyexpat 이 빠지면 이미지가 전부 사라진다 -- 그런데 앱은 멀쩡히
+# 돌아서 빌드도 실행도 성공으로 보인다. 실제로 그렇게 배포했다.
+if ! ls "$APP/Contents/Frameworks"/pyexpat*.so >/dev/null 2>&1; then
+  die "pyexpat 이 번들 최상위에 없습니다. XML 을 못 읽어 이미지가 전부 안 나옵니다."
+fi
+echo "    XML 파서(pyexpat) 수집됨"
+
+# pyexpat 은 /usr/lib/libexpat.1.dylib 에 링크돼 있다. 그 시스템 라이브러리는
+# macOS 버전마다 내용이 다르다 -- 26.5 에서 빌드하면 expat 2.7.2+ 의
+# _XML_SetAllocTracker* 심볼을 요구하는데 macOS 26.2 의 것에는 없다. 그러면
+# dyld 가 적재를 거부하고 ElementTree 가 그 실패를 "No module named expat" 으로
+# 덮어써서, 게임의 **모든 이미지가 사라진다**. 앱의 나머지는 멀쩡히 돌아서
+# 빌드도 실행도 성공으로 보인다. 실제로 그렇게 배포했다.
+#
+# 그래서 우리 expat 을 들고 가고, 참조를 번들 안으로 돌린다. PyInstaller 는
+# /usr/lib 의존성을 시스템 것으로 보고 손대지 않으므로 여기서 해야 한다.
+say "expat 링크를 번들 것으로 돌리기"
+EXPAT="$APP/Contents/Frameworks/libexpat.1.dylib"
+[ -f "$EXPAT" ] || die "libexpat.1.dylib 이 번들에 없습니다. spec 의 binaries 를 확인하세요."
+chmod u+w "$EXPAT"
+install_name_tool -id "@loader_path/libexpat.1.dylib" "$EXPAT" || \
+  die "libexpat 의 install name 을 바꾸지 못했습니다."
+
+find "$APP" -type f \( -name "*.so" -o -name "*.dylib" \) | while IFS= read -r bin; do
+  if otool -L "$bin" 2>/dev/null | grep -q "/usr/lib/libexpat"; then
+    chmod u+w "$bin"
+    install_name_tool -change /usr/lib/libexpat.1.dylib \
+      "@loader_path/libexpat.1.dylib" "$bin" || true
+  fi
+done
+
+# 하나도 남아 있으면 안 된다. 남으면 그 기계에서만 되는 빌드가 된다.
+LEFT=0
+while IFS= read -r bin; do
+  otool -L "$bin" 2>/dev/null | grep -q "/usr/lib/libexpat" && LEFT=$((LEFT + 1))
+done < <(find "$APP" -type f \( -name "*.so" -o -name "*.dylib" \))
+[ "$LEFT" -eq 0 ] || die "$LEFT 개가 아직 시스템 expat 을 참조합니다."
+
+# pyexpat 이 필요로 하는 XML_ 심볼이 번들 expat 에 모두 있는지 본다. 버전이
+# 어긋나면 여기서 잡힌다 -- 심볼 이름을 손으로 적어두면 다음 번에 또 어긋난다.
+NEED="$(nm -u "$APP/Contents/Frameworks/pyexpat"*.so | grep '^_XML_' | sort -u)"
+HAVE="$(nm -g "$EXPAT" | awk '$2 == "T" { print $3 }' | grep '^_XML_' | sort -u)"
+MISSING="$(comm -23 <(printf '%s\n' "$NEED") <(printf '%s\n' "$HAVE"))"
+[ -z "$MISSING" ] || die "번들 expat 에 없는 심볼: $(printf '%s' "$MISSING" | tr '\n' ' ')"
+echo "    expat 을 번들 것으로 연결 (심볼 $(printf '%s\n' "$NEED" | wc -l | tr -d ' ')개 확인)"
 echo "    크기: $(du -sh "$APP" | cut -f1)"
 
 # --------------------------------------------------------------------------

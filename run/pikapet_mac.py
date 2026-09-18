@@ -1268,12 +1268,32 @@ def install_window_patch(pet):
             pet.MAGIC = "systemTransparent"
             install_sprite_alpha_patch(transparent=False)
         print(f"  투명도: {TRANSPARENCY_NOTES[mode]}", flush=True)
+        _diag("log", f"투명도 {mode} -- {TRANSPARENCY_NOTES[mode]}")
         result = original(root)
         # 2초 뒤에 본다. 펫의 위치는 저장된 좌표에서 시작해 tick 이 정리하므로,
         # 바로 읽으면 아직 자리를 잡지 않은 값이 남는다. "펫이 안 보인다"는
         # 신고에서 알아야 하는 것은 그 다음의 안정된 위치다.
+        def settle():
+            _diag("log_window", "펫 창", root)
+            # 펫이 안 보인다는 신고는 두 갈래다: 스프라이트를 못 읽은 것과,
+            # 오버레이가 Tk 창을 투명하게 만들어 놓고 자기는 그리지 못한 것.
+            # 후자는 창 위치만 봐서는 구별되지 않는다.
+            try:
+                import overlay
+
+                manager = overlay.MANAGER
+                if manager is None:
+                    _diag("log", "오버레이: 안 쓰는 중 (펫 창이 불투명하게 보임)")
+                else:
+                    _diag("log", f"오버레이: 투명 요청 {len(manager.transparent)}개"
+                                 f" / 실제 투명 {len(manager.dimmed)}개"
+                                 f" / 스프라이트 {len(manager.records)}개")
+            except Exception as exc:
+                _diag("log", f"오버레이 상태를 못 읽었습니다: "
+                             f"{type(exc).__name__}: {exc}")
+
         try:
-            root.after(2000, lambda: _diag("log_window", "펫 창", root))
+            root.after(2000, settle)
         except Exception:
             pass
         return result
@@ -1685,6 +1705,14 @@ def install_sprite_load_log(pet):
 
     _diag("log_images", getattr(pet, "SPRITE_SEARCH_DIRS", ()))
 
+    # 켤 때마다 한 벌을 직접 읽어본다. 한 번 고른 사람에게는 선택 창이 다시
+    # 나오지 않으므로, 게임이 실패하는 것을 기다릴 수가 없다.
+    try:
+        _diag("log_sprite_probe", pet.sprite_folder_path("charmander"))
+    except Exception as exc:
+        _diag("log", f"이미지 시험을 시작하지 못했습니다: "
+                     f"{type(exc).__name__}: {exc}")
+
     original = spriteanim.AnimSet
     seen = set()
 
@@ -1698,9 +1726,18 @@ def install_sprite_load_log(pet):
                     where = "폴더 있음" if os.path.isdir(folder) else "폴더 없음"
                 except Exception:
                     where = "폴더 확인 실패"
+                # 트레이스백 마지막 줄까지 남긴다. 예외 이름만으로는 XML 쪽인지
+                # 이미지 디코딩 쪽인지 갈리지 않는다.
+                try:
+                    import traceback
+
+                    frames = traceback.format_exc().strip().splitlines()
+                    tail = " / ".join(part.strip() for part in frames[-3:])
+                except Exception:
+                    tail = f"{type(exc).__name__}: {exc}"
                 _diag("log", f"스프라이트 로드 실패 "
                              f"{os.path.basename(str(folder))} ({where}, {folder})"
-                             f": {type(exc).__name__}: {exc}")
+                             f": {tail}")
             raise
 
     spriteanim.AnimSet = AnimSet
