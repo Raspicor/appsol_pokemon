@@ -789,6 +789,9 @@ class StartupLogWiring(unittest.TestCase):
         self.assertEqual(len(root.scheduled), 1)
         root.scheduled[0]()
         self.assertIn(("log_window", "펫 창", root), self.diag)
+        # 펫이 안 보인다는 신고는 스프라이트 문제와 오버레이 문제로 갈린다.
+        self.assertTrue(any("오버레이" in str(d) for d in self.diag), self.diag)
+        self.assertTrue(any("투명도 none" in str(d) for d in self.diag), self.diag)
 
     def test_a_broken_logger_cannot_break_the_game(self):
         L._diag = self.original_diag
@@ -938,6 +941,35 @@ class SpriteLoadLog(unittest.TestCase):
     def test_the_search_dirs_are_logged_at_startup(self):
         self._install(dirs=("/한/곳", "/또/한/곳"))
         self.assertIn(("log_images", ("/한/곳", "/또/한/곳")), self.diag)
+
+    def test_one_sprite_set_is_probed_at_startup(self):
+        # 선택 창을 다시 볼 수 없는 사람에게서도 이미지 상태를 알아야 한다.
+        fake = self.FakeSpriteanim()
+        sys.modules["spriteanim"] = fake
+        pet = type("P", (), {"SPRITE_SEARCH_DIRS": (),
+                             "sprite_folder_path": staticmethod(
+                                 lambda name: f"/에셋/sprites/{name}")})()
+        L.install_sprite_load_log(pet)
+        self.assertIn(("log_sprite_probe", "/에셋/sprites/charmander"), self.diag)
+
+    def test_a_game_without_sprite_folder_path_still_installs(self):
+        fake = self.FakeSpriteanim()
+        sys.modules["spriteanim"] = fake
+        pet = type("P", (), {"SPRITE_SEARCH_DIRS": ()})()
+        self.assertIsNotNone(L.install_sprite_load_log(pet))
+        self.assertTrue(any("이미지 시험을 시작하지 못했습니다" in str(d)
+                            for d in self.diag))
+
+    def test_a_failure_carries_the_traceback(self):
+        # 예외 이름만으로는 XML 쪽인지 디코딩 쪽인지 갈리지 않는다.
+        fake = self._install(boom=OSError("Truncated File Read"))
+        self.diag.clear()
+        with self.assertRaises(OSError):
+            fake.AnimSet("/어딘가/charmander")
+        message = self.diag[0][1]
+        self.assertIn("Truncated File Read", message)
+        self.assertIn("AnimSet", message, "어느 줄에서 났는지 보여야 한다")
+        self.assertEqual(len(message.splitlines()), 1, "한 줄이어야 한다")
 
     def test_a_success_logs_nothing_extra(self):
         fake = self._install()

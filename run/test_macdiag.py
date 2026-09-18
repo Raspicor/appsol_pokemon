@@ -220,6 +220,11 @@ class CanWeDrawImages(unittest.TestCase):
         macdiag.log_images()
         self.assertIn("PIL", self.logged())
 
+    def test_it_says_where_the_xml_parser_came_from(self):
+        # 빌드한 기계의 파이썬에서 가져오고 있으면 받는 사람에게서는 실패한다.
+        macdiag.log_images()
+        self.assertIn("XML 파서", self.logged())
+
     def test_every_folder_present_is_counted(self):
         dirs = [os.path.join(self.tmp, n) for n in ("하나", "둘")]
         for d in dirs:
@@ -243,6 +248,75 @@ class CanWeDrawImages(unittest.TestCase):
 
     def test_it_stays_on_one_line(self):
         macdiag.log_images([self.tmp])
+        self.assertEqual(len(self.logged().strip().splitlines()), 1)
+
+
+class ProbingOneSpriteSet(unittest.TestCase):
+    """켤 때마다 스프라이트 한 벌을 실제로 읽어본다.
+
+    한 번 고른 사람에게는 선택 창이 다시 나오지 않으므로(pet.py:19063),
+    게임이 '(이미지 없음)' 을 보여주기를 기다릴 수 없다. 그래서 `AnimSet` 이
+    하는 두 단계를 직접 해보고 어디서 걸리는지 남긴다.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.original = macdiag.LOG_PATH
+        self.addCleanup(setattr, macdiag, "LOG_PATH", self.original)
+        macdiag.LOG_PATH = os.path.join(self.tmp, "startup.log")
+
+    def logged(self):
+        with open(macdiag.LOG_PATH, encoding="utf-8") as fh:
+            return fh.read()
+
+    def _folder(self, xml=True, png=True, broken_png=False):
+        folder = os.path.join(self.tmp, "charmander")
+        os.makedirs(folder)
+        if xml:
+            with open(os.path.join(folder, "AnimData.xml"), "w") as fh:
+                fh.write("<AnimData><Anims><Anim/><Anim/></Anims></AnimData>")
+        if png:
+            path = os.path.join(folder, "Idle-Anim.png")
+            if broken_png:
+                with open(path, "wb") as fh:
+                    fh.write(b"\x89PNG\r\n\x1a\n" + b"garbage" * 4)
+            else:
+                from PIL import Image
+
+                Image.new("RGBA", (8, 4)).save(path)
+        return folder
+
+    def test_a_healthy_set_reports_both_steps(self):
+        macdiag.log_sprite_probe(self._folder())
+        written = self.logged()
+        self.assertIn("AnimData.xml OK (2 개)", written)
+        self.assertIn("Idle-Anim.png OK (8x4 RGBA)", written)
+        self.assertNotIn("실패", written)
+
+    def test_a_missing_xml_is_named(self):
+        macdiag.log_sprite_probe(self._folder(xml=False))
+        written = self.logged()
+        self.assertIn("실패: AnimData.xml", written)
+        self.assertIn("FileNotFoundError", written)
+
+    def test_a_broken_png_is_caught_at_decode(self):
+        # open() 은 헤더만 읽는다. load() 까지 불러야 드러난다.
+        macdiag.log_sprite_probe(self._folder(broken_png=True))
+        written = self.logged()
+        self.assertIn("실패: png 디코딩", written)
+        self.assertIn("AnimData.xml OK", written, "어디까지 됐는지도 남아야 한다")
+
+    def test_a_folder_with_no_png_is_named(self):
+        macdiag.log_sprite_probe(self._folder(png=False))
+        self.assertIn("png 가 없습니다", self.logged())
+
+    def test_no_folder_at_all_is_said_so(self):
+        macdiag.log_sprite_probe(None)
+        self.assertIn("폴더를 못 정했습니다", self.logged())
+
+    def test_it_stays_on_one_line(self):
+        macdiag.log_sprite_probe(self._folder())
         self.assertEqual(len(self.logged().strip().splitlines()), 1)
 
 

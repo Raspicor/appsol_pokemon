@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 281 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 291 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -451,6 +451,93 @@ notarization removes that step and nothing else does.
   actually resolve (`-d` follows them, so a dangling link fails the build), and
   the DMG staging copies with `ditto` rather than `cp -R`, which drops the
   extended attributes the signature needs.
+- **The bundle must carry its own `libexpat`, or images vanish on a Mac running
+  a different macOS than the builder.** This was the actual cause of the "no
+  image" report, and it took two wrong diagnoses to get here. Homebrew's
+  `python@3.14` is built `--with-system-expat`, so `pyexpat` links
+  `/usr/lib/libexpat.1.dylib` -- a system library whose contents differ per OS
+  version. Measured: the `pyexpat` built on macOS 26.5 needs
+  `_XML_SetAllocTrackerActivationThreshold` and
+  `_XML_SetAllocTrackerMaximumAmplification` (expat 2.7.2+), and macOS 26.2's
+  system expat does not export them. dyld then refuses the load, and
+  `ElementTree` catches the `ImportError` and re-raises its own
+  `No module named expat; use SimpleXMLTreeBuilder instead`, which hides the
+  real reason completely.
+  `spriteanim` reads an `AnimData.xml` for *every* sprite folder, so this
+  removes **every image in the game** while the app runs perfectly -- windows,
+  menus, notifications, save, update check all fine. The picker shows five
+  `(이미지 없음)` boxes and the pet is invisible. Nothing looks broken, which is
+  why it survived several releases.
+  The fix has three parts: `brew install expat` (now in `install.sh` and checked
+  by `doctor.py`, build-only), the spec adds
+  `/opt/homebrew/opt/expat/lib/libexpat.1.dylib` to `binaries`, and
+  `make_dmg.sh` rewrites every reference with
+  `install_name_tool -change /usr/lib/libexpat.1.dylib @loader_path/...` before
+  signing (PyInstaller leaves `/usr/lib` dependencies alone, treating them as
+  OS-provided). The build then fails if any binary still references the system
+  expat, and compares `nm -u` on `pyexpat` against `nm -g` on the bundled dylib
+  so a version mismatch is caught rather than shipped -- 56 symbols at the time
+  of writing, listed by measurement rather than by hand.
+  Verified with `lsof` on the running app: the mapped library is
+  `PikaPet.app/Contents/Frameworks/libexpat.1.dylib`, and the bundled dylib's
+  compatibility version (14.0.0) satisfies what `pyexpat` records (7.0.0).
+  **The general lesson: `otool -L` across the bundle for `/usr/lib/` entries is
+  the risk list.** Currently libSystem, libobjc, libz, libffi, libbz2 and
+  libedit -- all long-stable ABIs. expat was the one that recently grew symbols.
+  A build machine newer than the user's Mac is the dangerous direction.
+- **`pyexpat` also has to be placed at the bundle root by hand.** This was the cause of the "no image" report. `spriteanim` reads
+  an `AnimData.xml` for *every* sprite folder, so a missing XML parser removes
+  every image in the game while the app itself runs perfectly -- windows, menus,
+  notifications, save, update check all fine. The picker shows five
+  `(이미지 없음)` boxes and the pet that follows is invisible.
+  `xml.etree.ElementTree` does `from xml.parsers import expat` late and inside a
+  `try`, so PyInstaller's analysis never registers `pyexpat`: measured, it was
+  **not** in the CArchive TOC and not at the bundle root, and existed only as
+  `Contents/Frameworks/python3__dot__14/lib-dynload/pyexpat...so`. That folder
+  name is PyInstaller's own mangling, not a path Python searches, and the import
+  succeeded on the build machine (macOS 26.5) while failing on macOS 26.2 with
+  `ImportError: No module named expat; use SimpleXMLTreeBuilder instead`.
+  Adding it to `hiddenimports` is **not enough** -- that only puts the Python
+  wrapper `xml.parsers.expat` in the PYZ. The spec now appends the real
+  extensions to `binaries` with `sysconfig.get_config_var("DESTSHARED")`, which
+  puts them at the bundle root where `sys._MEIPASS` is on `sys.path` and the
+  standard extension loader finds them (this is why `_tkinter.so` sits there and
+  has always worked). The spec fails the build if the extension cannot be found
+  at all.
+  Verified by the log line that now records where the parser came from:
+  `XML 파서 .../PikaPet.app/Contents/Frameworks/pyexpat.cpython-314-darwin.so`.
+  **Keep that line.** "It works on my Mac" is worthless for this class of bug --
+  the only useful evidence is whether the module resolved inside the bundle or
+  out of the build machine's Homebrew. `make_dmg.sh` also fails the build if
+  `pyexpat*.so` is not at the bundle root.
+- **"No image" on a bundle identical to the builder's.** A 0.0.9 install showed
+  `(이미지 없음)` for all five starters on macOS 26.2 / arm64. Everything
+  measurable about that install matched this machine exactly: version, arch, the
+  four asset symlinks resolving, 14 files in `sprites/charmander`, a 356676-byte
+  `pokedex_data_v2.json`, 10414 bundle entries. `otool -L` across every `.so`
+  and `.dylib` shows **no** out-of-bundle dependency, so it is not leaking this
+  machine's Homebrew. And `from PIL import ...` plus `import spriteanim` are
+  unguarded at pet.py:25-26, so the app could not have started at all if either
+  had failed -- PIL and spriteanim are therefore ruled out. It does not
+  reproduce here: the shipped DMG, a copy run straight from the mounted DMG and
+  the installed bundle all render the sprites.
+  So the exception has to come from the affected machine, and waiting for the
+  game to show it does not work: the picker only appears when the save has no
+  starter (pet.py:19063), and that person already picked. `log_sprite_probe()`
+  therefore repeats what `AnimSet.__init__` does -- `ET.parse(AnimData.xml)`
+  then `Image.open(...).load()` (spriteanim lines 57-58) -- on every launch and
+  writes the outcome. `load()` is the part that matters: `open()` only reads the
+  header, so a missing decoder or a truncated file surfaces only on `load()`
+  (verified: a garbage PNG gives `OSError: Truncated File Read`, and the line
+  still records that the XML step passed). The swallowed `AnimSet` failure now
+  carries the last three traceback lines too, because the exception name alone
+  does not separate the XML step from the decode step.
+- **A dirty tree used to build under the release's own name.** `make_dmg.sh`
+  labelled by `git describe --exact-match` alone, so sitting on tag 0.0.9 with
+  uncommitted changes produced `PikaPet-0.0.9.dmg` -- indistinguishable from the
+  released file, which is exactly how a mixed 0.0.6 bundle once got published.
+  It now checks `git status --porcelain` as well and names such a build
+  `PikaPet-<ver>+<sha>-dirty.dmg`.
 - **`LSMinimumSystemVersion` said 11.0 and the real floor is 26.0.** Measured
   across the bundle's binaries: 46 are minos 11.0 (the Pillow wheel) and **60 are
   minos 26.0** -- `_json`, `_ctypes`, `_decimal`, `libtcl9tk9.0.dylib` and the
