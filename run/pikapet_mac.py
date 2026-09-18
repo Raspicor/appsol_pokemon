@@ -60,6 +60,51 @@ HERE = _here()
 # 1. 환경: PikaPet은 Windows 프로필 환경변수를 찾는다
 # --------------------------------------------------------------------------
 
+def fix_resource_dir():
+    """에셋이 실제로 있는 폴더를 pet.pyc 가 보게 한다. 옮겼으면 그 경로를 돌려준다.
+
+    번들에서 pet.pyc 는 `RESOURCE_DIR = sys._MEIPASS` 로 에셋을 찾는다
+    (pet.py:35). 실측하면 그 `_MEIPASS` 는 `Contents/Frameworks` 이고, 거기의
+    `assets` 는 **상대 심볼릭 링크**다 -- PyInstaller 가 실물을
+    `Contents/Resources` 에 두고 링크만 걸어준다:
+
+        Contents/Frameworks/assets -> ../Resources/assets   (v3, v4, badges_trainer 도)
+
+    **그 링크가 사라지면 앱은 멀쩡히 돌고 이미지만 전부 사라진다.** 코드는
+    Frameworks 안에 실물로 있으니 창도 메뉴도 알림도 정상인데, 스프라이트
+    폴더만 없다. 게임은 `AnimSet` 실패를 삼키므로 (pet.py:4040~4042) 선택 창은
+    '(이미지 없음)' 다섯 개가 되고, 고른 뒤의 펫은 보이지 않는다. 실제 신고가
+    그것이었고, 링크 네 개를 지운 번들로 그대로 재현했다.
+
+    링크를 잃는 길은 여럿이다 -- 심볼릭 링크를 풀거나 건너뛰는 압축/복사 도구,
+    동기화 폴더, 관리 도구. 앱 안에 링크를 다시 만들지는 않는다: 번들을 고치면
+    코드 서명이 깨져서 다음 실행이 아예 막힐 수 있다. 대신 에셋이 실제로 있는
+    형제 폴더를 찾아 `sys._MEIPASS` 를 거기로 돌린다. pet.pyc 는 아직 import
+    되지 않았으므로 바뀐 값을 읽는다.
+
+    `HERE` 는 건드리지 않는다. pet.pyc 와 spriteanim.pyc 는 Frameworks 안에
+    실물로 있으므로 로드 경로는 그대로 두어야 한다.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    meipass = getattr(sys, "_MEIPASS", None)
+    if not meipass or os.path.isdir(os.path.join(meipass, "assets")):
+        return None                      # 정상. 손대지 않는다
+    contents = os.path.dirname(os.path.abspath(meipass))
+    for name in ("Resources", "Frameworks", "MacOS"):
+        candidate = os.path.join(contents, name)
+        if os.path.isdir(os.path.join(candidate, "assets")):
+            sys._MEIPASS = candidate
+            print(f"  에셋 경로 보정: {meipass} 에 assets 링크가 없어 "
+                  f"{candidate} 로 돌립니다", flush=True)
+            _diag("log", f"에셋 링크가 없어 RESOURCE_DIR 을 {candidate} 로 "
+                         f"돌렸습니다 (원래 {meipass})")
+            return candidate
+    _diag("log", f"에셋 폴더를 못 찾았습니다 -- {meipass} 아래에 assets 가 없고 "
+                 f"형제 폴더에도 없습니다. 이미지가 나오지 않습니다")
+    return None
+
+
 def install_save_paths():
     """%APPDATA%/%LOCALAPPDATA%를 macOS의 통상 위치로 돌린다.
 
@@ -1616,6 +1661,52 @@ def install_right_click_fallback():
 # pet.pyc 로드
 # --------------------------------------------------------------------------
 
+def install_sprite_load_log(pet):
+    """스프라이트를 못 읽으면 왜 못 읽었는지 남긴다.
+
+    게임은 `spriteanim.AnimSet` 의 실패를 삼키고 '(이미지 없음)' 라벨로 바꿔
+    놓는다 (pet.py:4040~4048). 그래서 이미지가 하나도 없는 채로 앱은 멀쩡히
+    돌아간다 -- 선택 창은 112px 미리보기가 글자 라벨로 줄어 작아 보이고, 고른
+    뒤의 펫은 아예 안 보인다. 실제 신고가 정확히 그것이었는데, 실패 이유가
+    어디에도 남지 않아서 이쪽에서 재현되지 않는 동안 추측밖에 할 수 없었다.
+
+    **실패는 그대로 다시 던진다.** 게임의 '(이미지 없음)' 폴백은 그대로 살아
+    있어야 한다. 여기서 하는 일은 기록뿐이다.
+
+    같은 폴더를 여러 번 부르므로 폴더마다 한 번만 남긴다. 스프라이트 로드는
+    프레임마다 일어나기도 해서, 그러지 않으면 로그가 순식간에 찬다.
+    """
+    try:
+        import spriteanim
+    except Exception as exc:
+        _diag("log", f"스프라이트 모듈을 못 불렀습니다: "
+                     f"{type(exc).__name__}: {exc}")
+        return None
+
+    _diag("log_images", getattr(pet, "SPRITE_SEARCH_DIRS", ()))
+
+    original = spriteanim.AnimSet
+    seen = set()
+
+    def AnimSet(folder, *args, **kw):
+        try:
+            return original(folder, *args, **kw)
+        except Exception as exc:
+            if folder not in seen:
+                seen.add(folder)
+                try:
+                    where = "폴더 있음" if os.path.isdir(folder) else "폴더 없음"
+                except Exception:
+                    where = "폴더 확인 실패"
+                _diag("log", f"스프라이트 로드 실패 "
+                             f"{os.path.basename(str(folder))} ({where}, {folder})"
+                             f": {type(exc).__name__}: {exc}")
+            raise
+
+    spriteanim.AnimSet = AnimSet
+    return original
+
+
 def install_single_instance_log(layer):
     """이미 돌고 있어서 그냥 끝나는 실행을 기록에 남긴다.
 
@@ -1660,6 +1751,7 @@ def main():
         sys.exit("pikapet_mac.py는 macOS용입니다. 다른 곳에서는 pet.pyc를 직접 실행하세요.")
 
     sys.path.insert(0, HERE)        # pet.pyc가 spriteanim.pyc를 찾도록
+    fix_resource_dir()              # pet.pyc 가 import 되기 전이어야 한다
     install_save_paths()
     _diag("log_start")              # APPDATA 가 정해진 뒤여야 저장 경로를 안다
 
@@ -1682,6 +1774,7 @@ def main():
     install_window_patch(pet)
     install_tray_replacement(pet)
     install_starter_window_fix(pet)
+    install_sprite_load_log(pet)
 
     print(f"macOS PikaPet | Tk {tk.TkVersion} | 메뉴: 펫을 우클릭"
           + (" | Button-3을 Button-2에도 연결" if remapped_buttons else ""),

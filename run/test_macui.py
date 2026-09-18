@@ -811,6 +811,180 @@ class StartupLogWiring(unittest.TestCase):
         L._diag("그런함수없음", 1, 2)
 
 
+class FindingTheAssets(unittest.TestCase):
+    """에셋이 심볼릭 링크 뒤에 있다. 링크가 사라지면 이미지만 전부 사라진다.
+
+    번들 구조 (실측):
+
+        sys._MEIPASS = Contents/Frameworks          <- pet.pyc 가 RESOURCE_DIR 로 쓴다
+        Contents/Frameworks/assets -> ../Resources/assets
+        Contents/Resources/assets                   <- 실물
+
+    링크 네 개를 지운 번들로 신고를 그대로 재현했다: 선택 창에 '(이미지 없음)'
+    다섯 개. 코드는 Frameworks 안에 실물로 있으니 창·메뉴·알림은 전부 정상이다.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.had_frozen = hasattr(sys, "frozen")
+        self.frozen = getattr(sys, "frozen", None)
+        self.had_meipass = hasattr(sys, "_MEIPASS")
+        self.meipass = getattr(sys, "_MEIPASS", None)
+        self.addCleanup(self._restore)
+        self.diag = []
+        self.original_diag = L._diag
+        self.addCleanup(setattr, L, "_diag", self.original_diag)
+        L._diag = lambda action, *a, **k: self.diag.append((action,) + a)
+
+    def _restore(self):
+        for name, had, value in (("frozen", self.had_frozen, self.frozen),
+                                 ("_MEIPASS", self.had_meipass, self.meipass)):
+            if had:
+                setattr(sys, name, value)
+            else:
+                try:
+                    delattr(sys, name)
+                except AttributeError:
+                    pass
+
+    def _bundle(self, link=True, assets=True):
+        """Contents/{Frameworks,Resources} 를 만든다. `link` 가 False 면 링크 없음."""
+        contents = os.path.join(self.tmp, "PikaPet.app", "Contents")
+        frameworks = os.path.join(contents, "Frameworks")
+        resources = os.path.join(contents, "Resources")
+        os.makedirs(frameworks)
+        os.makedirs(resources)
+        if assets:
+            os.makedirs(os.path.join(resources, "assets", "sprites"))
+            if link:
+                os.symlink("../Resources/assets",
+                           os.path.join(frameworks, "assets"))
+        sys.frozen = True
+        sys._MEIPASS = frameworks
+        return frameworks, resources
+
+    def test_a_healthy_bundle_is_left_alone(self):
+        frameworks, _ = self._bundle(link=True)
+        self.assertIsNone(L.fix_resource_dir())
+        self.assertEqual(sys._MEIPASS, frameworks)
+        self.assertEqual(self.diag, [])
+
+    def test_a_missing_link_is_routed_to_the_real_folder(self):
+        frameworks, resources = self._bundle(link=False)
+        self.assertEqual(L.fix_resource_dir(), resources)
+        self.assertEqual(sys._MEIPASS, resources,
+                         "pet.pyc 가 이 값으로 RESOURCE_DIR 을 정한다")
+
+    def test_the_repair_is_written_down(self):
+        self._bundle(link=False)
+        L.fix_resource_dir()
+        self.assertEqual(len(self.diag), 1)
+        self.assertIn("에셋 링크가 없어", self.diag[0][1])
+
+    def test_assets_nowhere_says_images_will_not_appear(self):
+        frameworks, _ = self._bundle(link=False, assets=False)
+        self.assertIsNone(L.fix_resource_dir())
+        self.assertEqual(sys._MEIPASS, frameworks, "옮길 곳이 없으면 그대로 둔다")
+        self.assertIn("이미지가 나오지 않습니다", self.diag[0][1])
+
+    def test_running_from_source_is_not_touched(self):
+        # 소스 실행은 RESOURCE_DIR 이 run/ 이고 거기 링크가 실제로 있다.
+        self._bundle(link=False)
+        sys.frozen = False
+        self.assertIsNone(L.fix_resource_dir())
+
+    def test_a_bundle_without_meipass_is_not_touched(self):
+        self._bundle(link=False)
+        del sys._MEIPASS
+        self.assertIsNone(L.fix_resource_dir())
+
+
+class SpriteLoadLog(unittest.TestCase):
+    """스프라이트 로드 실패는 게임이 삼킨다. 이유를 남겨야 한다."""
+
+    class FakeSpriteanim:
+        def __init__(self, boom=None):
+            self.boom = boom
+            self.calls = []
+
+        def AnimSet(self, folder):
+            self.calls.append(folder)
+            if self.boom is not None:
+                raise self.boom
+            return f"애니메이션({folder})"
+
+    def setUp(self):
+        self.diag = []
+        self.original_diag = L._diag
+        self.addCleanup(setattr, L, "_diag", self.original_diag)
+        L._diag = lambda action, *a, **k: self.diag.append((action,) + a)
+        self.original_module = sys.modules.get("spriteanim")
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self.original_module is None:
+            sys.modules.pop("spriteanim", None)
+        else:
+            sys.modules["spriteanim"] = self.original_module
+
+    def _install(self, boom=None, dirs=()):
+        fake = self.FakeSpriteanim(boom)
+        sys.modules["spriteanim"] = fake
+        pet = type("P", (), {"SPRITE_SEARCH_DIRS": dirs})()
+        L.install_sprite_load_log(pet)
+        return fake
+
+    def test_the_search_dirs_are_logged_at_startup(self):
+        self._install(dirs=("/한/곳", "/또/한/곳"))
+        self.assertIn(("log_images", ("/한/곳", "/또/한/곳")), self.diag)
+
+    def test_a_success_logs_nothing_extra(self):
+        fake = self._install()
+        self.diag.clear()
+        self.assertEqual(fake.AnimSet("/어딘가/pikachu"), "애니메이션(/어딘가/pikachu)")
+        self.assertEqual(self.diag, [])
+
+    def test_a_failure_names_the_reason_and_the_path(self):
+        fake = self._install(boom=FileNotFoundError("AnimData.xml 없음"))
+        self.diag.clear()
+        with self.assertRaises(FileNotFoundError):
+            fake.AnimSet("/어딘가/charmander")
+        self.assertEqual(len(self.diag), 1)
+        message = self.diag[0][1]
+        self.assertIn("charmander", message)
+        self.assertIn("FileNotFoundError", message)
+        self.assertIn("폴더 없음", message)
+
+    def test_the_failure_is_re_raised(self):
+        # 게임의 '(이미지 없음)' 폴백이 그대로 살아 있어야 한다.
+        fake = self._install(boom=ValueError("XML 깨짐"))
+        with self.assertRaises(ValueError):
+            fake.AnimSet("/어딘가/eevee")
+
+    def test_the_same_folder_is_logged_once(self):
+        # 스프라이트 로드는 프레임마다 일어나기도 한다.
+        fake = self._install(boom=OSError("안 됨"))
+        self.diag.clear()
+        for _ in range(5):
+            with self.assertRaises(OSError):
+                fake.AnimSet("/어딘가/squirtle")
+        self.assertEqual(len(self.diag), 1)
+
+    def test_different_folders_are_each_logged(self):
+        fake = self._install(boom=OSError("안 됨"))
+        self.diag.clear()
+        for name in ("pikachu", "charmander"):
+            with self.assertRaises(OSError):
+                fake.AnimSet(f"/어딘가/{name}")
+        self.assertEqual(len(self.diag), 2)
+
+    def test_a_missing_spriteanim_is_reported_not_raised(self):
+        sys.modules["spriteanim"] = None      # import 가 실패하게
+        self.assertIsNone(L.install_sprite_load_log(type("P", (), {})()))
+        self.assertIn("스프라이트 모듈", self.diag[0][1])
+
+
 class WindowsWording(unittest.TestCase):
     """게임의 안내 문구는 macOS 에 없는 것을 가리킨다.
 

@@ -108,7 +108,13 @@ app = BUNDLE(
         "NSHighResolutionCapable": True,
         # LSUIElement로 두지 않는다. winlayer의 flash_taskbar가 주의를 끌 때
         # Dock 아이콘을 튀게 하는데, Dock 타일이 없으면 그게 아무 일도 하지 않는다.
-        "LSMinimumSystemVersion": "11.0",
+        # 실측한 하한이다. 번들 바이너리 60개(Homebrew python@3.14 와 tcl-tk
+        # 병에서 온 _json, _ctypes, libtcl9tk 등)가 LC_BUILD_VERSION minos 26.0
+        # 을 달고 있어서, macOS 25 이하에서는 파이썬 자체가 뜨지 않는다. 여기에
+        # 11.0 을 적어두면 돌지도 못하는 맥에서 설치가 열려 "안 켜진다"가 된다.
+        # 확인: find dist/PikaPet.app -name '*.so' -o -name '*.dylib' 에
+        #       otool -l | grep minos 를 돌려 가장 높은 값.
+        "LSMinimumSystemVersion": "26.0",
         "NSAppleEventsUsageDescription":
             "데스크톱 아이콘 위치를 읽을 때 Finder에 물어봅니다 "
             "(PIKAPET_DESKTOP_ICONS=1 일 때만).",

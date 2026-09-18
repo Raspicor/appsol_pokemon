@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 263 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 281 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -426,6 +426,40 @@ notarization removes that step and nothing else does.
   matching CGWindowList bounds to a Tk geometry needs the title-bar height and
   the Retina scale, while the fault being hunted is "the window exists and none
   of it is on the user's screen".
+- **The assets hang off a relative symlink, and losing it kills images only.**
+  `pet.pyc` reads assets from `RESOURCE_DIR = sys._MEIPASS` (pet.py:35), which in
+  this bundle is `Contents/Frameworks` -- but PyInstaller puts the real data in
+  `Contents/Resources` and leaves links behind:
+
+      Contents/Frameworks/assets -> ../Resources/assets   (plus v3, v4, badges_trainer)
+
+  Delete those four links and the app still runs perfectly: windows, menus,
+  notifications, save, update check. Only the sprites are gone, because the code
+  itself is a real file in `Frameworks`. The game swallows the `AnimSet` failure
+  (pet.py:4040-4042), so the picker shows five `(이미지 없음)` boxes and the pet
+  that follows is invisible. That is a reported symptom, reproduced here exactly
+  by removing the links from a copy of the shipped 0.0.9 bundle.
+  `fix_resource_dir()` handles it by pointing `sys._MEIPASS` at the sibling
+  directory that really holds `assets`, before `pet.pyc` is imported -- verified
+  end to end on the broken bundle (`FileNotFoundError` on
+  `Frameworks/assets/sprites/charmander/AnimData.xml` before, 12 animations
+  after). It deliberately does **not** recreate the links inside the app: editing
+  a bundle breaks its code signature, which can stop the next launch entirely.
+  `HERE` stays on the real `_MEIPASS`, because `pet.pyc` and `spriteanim.pyc` are
+  real files in `Frameworks`.
+  Two build-side consequences: `make_dmg.sh` now checks that the four links
+  actually resolve (`-d` follows them, so a dangling link fails the build), and
+  the DMG staging copies with `ditto` rather than `cp -R`, which drops the
+  extended attributes the signature needs.
+- **`LSMinimumSystemVersion` said 11.0 and the real floor is 26.0.** Measured
+  across the bundle's binaries: 46 are minos 11.0 (the Pillow wheel) and **60 are
+  minos 26.0** -- `_json`, `_ctypes`, `_decimal`, `libtcl9tk9.0.dylib` and the
+  rest of Homebrew's `python@3.14` and `tcl-tk` bottles, which are built for the
+  running macOS. Python itself cannot start on macOS 25 or earlier, so the old
+  value only opened the door to an install that could never run. The bundle is
+  also **arm64 only** (`lipo -archs`), so an Intel Mac cannot run it at all.
+  Re-measure after any Homebrew upgrade:
+  `otool -l <each .so/.dylib> | grep minos | sort -V | uniq -c`.
 - **The game's own messages send macOS users to a tray that isn't there.** Five
   player-facing strings say "작업표시줄 오른쪽 트레이 아이콘" or "트레이 아이콘"
   (grep the disassembly for 트레이), and four of them are exactly the messages

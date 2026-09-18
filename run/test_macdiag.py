@@ -202,6 +202,50 @@ class LookingAtTheSaveFile(unittest.TestCase):
                          os.path.join(self.tmp, "PikaPet", "pet_state.json"))
 
 
+class CanWeDrawImages(unittest.TestCase):
+    """이미지만 안 나오고 나머지는 멀쩡한 증상이 여기서 갈린다."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.original = macdiag.LOG_PATH
+        self.addCleanup(setattr, macdiag, "LOG_PATH", self.original)
+        macdiag.LOG_PATH = os.path.join(self.tmp, "startup.log")
+
+    def logged(self):
+        with open(macdiag.LOG_PATH, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_it_reports_the_pil_version(self):
+        macdiag.log_images()
+        self.assertIn("PIL", self.logged())
+
+    def test_every_folder_present_is_counted(self):
+        dirs = [os.path.join(self.tmp, n) for n in ("하나", "둘")]
+        for d in dirs:
+            os.makedirs(d)
+        macdiag.log_images(dirs)
+        self.assertIn("스프라이트 폴더 2/2 있음", self.logged())
+
+    def test_a_missing_folder_is_named(self):
+        # 심볼릭 링크가 사라진 번들이 정확히 이 모양이다.
+        present = os.path.join(self.tmp, "있음")
+        os.makedirs(present)
+        missing = os.path.join(self.tmp, "없음")
+        macdiag.log_images([present, missing])
+        written = self.logged()
+        self.assertIn("스프라이트 폴더 1/2 있음", written)
+        self.assertIn(missing, written)
+
+    def test_no_folder_list_is_said_so(self):
+        macdiag.log_images([])
+        self.assertIn("못 읽었습니다", self.logged())
+
+    def test_it_stays_on_one_line(self):
+        macdiag.log_images([self.tmp])
+        self.assertEqual(len(self.logged().strip().splitlines()), 1)
+
+
 class IsItActuallyOnScreen(unittest.TestCase):
     """창이 있는데 안 보이는 경우를 잡으려는 것이다."""
 

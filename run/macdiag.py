@@ -161,6 +161,32 @@ def log_start(version=None):
     return log(" | ".join(parts))
 
 
+def log_images(dirs=()):
+    """이미지를 그릴 수 있는 상태인지 한 줄.
+
+    `from PIL import Image` 까지 해본다. 그게 `_imaging` 확장과 거기 딸린
+    libjpeg/libpng 을 실제로 적재하는 지점이라, 껍데기 import 만으로는 안 잡히는
+    고장이 여기서 드러난다. 이미지가 안 나오는데 나머지가 멀쩡한 증상은 거의
+    전부 이 줄에서 갈린다.
+    """
+    try:
+        import PIL
+        from PIL import Image  # noqa: F401
+
+        pil = f"PIL {getattr(PIL, '__version__', '버전 모름')}"
+    except Exception as exc:
+        pil = f"PIL 을 못 씁니다: {type(exc).__name__}: {exc}"
+    dirs = list(dirs)
+    if not dirs:
+        where = "스프라이트 폴더 목록을 못 읽었습니다"
+    else:
+        missing = [d for d in dirs if not os.path.isdir(d)]
+        where = f"스프라이트 폴더 {len(dirs) - len(missing)}/{len(dirs)} 있음"
+        if missing:
+            where += f" (없음: {missing[0]})"
+    return log(f"이미지 준비: {pil} | {where}")
+
+
 def log_phase(name):
     """게임이 어느 단계로 갔는지. 신고를 읽을 때 가장 먼저 보는 줄이다."""
     return log(PHASE_NOTES.get(name, f"{name} 단계"))
