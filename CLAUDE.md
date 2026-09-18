@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 161 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 194 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -71,6 +71,8 @@ with junctions, which need no admin rights.
 | `run/test_macui.py` | Tests for the glyph fix and the coloured-button swap. |
 | `run/macupdate.py` | Checks GitHub Releases for a newer version. |
 | `run/test_macupdate.py` | Tests for the update check. |
+| `run/macupgrade.py` | Downloads a release and replaces the installed app. |
+| `run/test_macupgrade.py` | Tests for the self-update, including the swap script. |
 | `run/pet.pyc` | **The game.** Windows-built bytecode, run as-is. |
 | `disasm/` | CPython `dis` output. Authoritative. |
 | `src/decompiled/` | Per-function decompilation. Partially wrong — see below. |
@@ -202,6 +204,45 @@ possible; without it only the newer case is delivered.
 Both run the request on a daemon thread and deliver through a Tk timer -- the
 menu action already runs inside `_drain`, so waiting for the network there
 would freeze the game for up to `TIMEOUT_SEC`.
+
+### The app installs the update itself
+
+`macupgrade.py` downloads the release dmg and replaces the installed bundle.
+Four things were measured before writing it, and all four have to hold:
+
+- `/Applications` is `drwxrwxr-x root:admin` and the installing user is in
+  `admin`, so **no administrator password is needed**. The bundle itself is
+  user-owned.
+- A file fetched with `urllib` gets `com.apple.provenance` but **not
+  `com.apple.quarantine`** -- Chrome is what attaches quarantine, and the
+  currently installed app carries it. So a self-applied update *skips* the
+  "Open Anyway" trip through System Settings. Self-updating is less friction
+  than the manual path, not more.
+- `ditto` preserves the ad-hoc signature (the copy passes
+  `codesign --verify --deep --strict`). `cp -R` drops extended attributes, so
+  it is not used.
+- `hdiutil attach -nobrowse -readonly` needs no privileges.
+
+**A running bundle cannot replace itself**, so the swap is done by a detached
+`/bin/sh` script (`SWAP_SCRIPT`, launched with `start_new_session=True` so it
+outlives us). It waits for our pid, moves the old bundle aside, dittos the new
+one in, verifies it, and restores the old one if anything fails.
+
+The invariant is *the old app is still there if anything goes wrong*, and it is
+what the tests are built around: they run the real script under `/bin/sh`,
+because a Python re-implementation of the restore logic would prove nothing.
+Two traps those tests caught:
+
+- The script's `rm -rf "$WORK"` will delete the app if the target ever sits
+  inside the work directory. It now refuses in that case. Production never
+  arranges it that way, but a wrong guess here deletes someone's app.
+- `kill -0 1` fails with EPERM for a non-root user, which the wait loop reads
+  as "already exited". Only ever wait on a pid we own -- which we do, since
+  `launch_swap` passes `os.getpid()`.
+
+If the app cannot replace itself -- running from source, or still inside the
+mounted dmg -- `can_replace()` says so and the UI falls back to opening the
+releases page.
 
 ## Releasing
 
