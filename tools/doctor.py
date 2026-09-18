@@ -90,6 +90,8 @@ def main():
               "없으면 새 버전이 나와도 알려주지 않는다")
         check("run/macupgrade.py 존재", os.path.isfile(os.path.join(RUN, "macupgrade.py")),
               "없으면 새 버전을 앱이 직접 설치하지 못하고 직접 내려받아야 한다")
+        check("run/macdiag.py 존재", os.path.isfile(os.path.join(RUN, "macdiag.py")),
+              "없으면 시작이 어떻게 흘러갔는지 나중에 알 수 없다")
         try:
             import UserNotifications  # noqa: F401
             check("pyobjc UserNotifications import 가능", True)

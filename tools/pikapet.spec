@@ -45,6 +45,7 @@ hiddenimports = [
     # 우리 쪽 모듈. winlayer 자리에 들어가는 maclayer는 런처가 import하므로
     # 분석에 잡히지만, 명시해두는 편이 안전하다.
     "maclayer", "overlay", "mactray", "macnotify", "macupdate", "macupgrade",
+    "macdiag",
     # maclayer와 overlay가 쓰는 pyobjc
     "Quartz", "AppKit", "Foundation", "objc", "UserNotifications",
 ]

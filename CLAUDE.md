@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 215 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 263 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -74,6 +74,8 @@ with junctions, which need no admin rights.
 | `run/macupgrade.py` | Downloads a release and replaces the installed app. |
 | `run/test_macupgrade.py` | Tests for the self-update, including the swap script. |
 | `run/test_macnotify.py` | Tests that every notification we send is written down. |
+| `run/macdiag.py` | Writes down how startup went: phase, window position, visibility. |
+| `run/test_macdiag.py` | Tests for the startup log. |
 | `run/pet.pyc` | **The game.** Windows-built bytecode, run as-is. |
 | `disasm/` | CPython `dis` output. Authoritative. |
 | `src/decompiled/` | Per-function decompilation. Partially wrong — see below. |
@@ -385,6 +387,58 @@ notarization removes that step and nothing else does.
   reported a wild-encounter banner while the starter picker was still up, and
   it could not be traced. `post_with_osascript` now logs one line per
   notification, with the date.
+- **"The starter picker does not appear" means two different things.** The picker
+  only exists when the save has no starter (pet.py:19063), so not appearing can
+  be correct -- and then what should be on screen is the *pet*, not the picker.
+  The decisive evidence is the notification: **a wild-encounter banner is sent
+  by the ◓ item itself** (`self.tray_icon.notify(...)`, pet.py:9401, behind an
+  `if not self.tray_icon` gate at 9396). So a report of that banner proves a
+  `PetApp` is alive, which proves a starter is saved, which proves the picker
+  was correctly skipped -- and that ◓ is already in their menu bar. Two
+  symptoms, one state, not two bugs.
+  Reinstalling the app cannot bring the picker back, and neither can deleting
+  one file. `load_state` tries **four** candidates in order (pet.py:961-964):
+  `STATE_PATH`, `STATE_PATH + '.bak'`, `SECONDARY_STATE_PATH`, and that plus
+  `.bak` -- and on macOS the launcher points `APPDATA` and `LOCALAPPDATA` at the
+  same directory, so all four live in `~/Library/Application Support/PikaPet/`.
+  Measured with the real 0.0.9 bundle on an isolated `APPDATA`: save present ->
+  no picker; only `pet_state.json.bak` left -> still no picker; `pet_state.json*`
+  all gone -> picker. A reset instruction that names one file is wrong.
+  There is a third meaning, and it outlives a reinstall: **the single-instance
+  check runs before `load_state()`** (pet.py:19049 vs 19062). While another
+  PikaPet holds the flock, every launch stops at the lock -- deleting the save
+  changes nothing, and reinstalling the app changes nothing either, because the
+  save lives outside the bundle and the *running process* is what holds the
+  lock. The game's answer there is a `tk.Tk()` + `withdraw()` + `messagebox`
+  (pet.py:19053-19057). That dialog **does** appear -- measured, it blocks and
+  is a real 260x208 alert -- but it came up at `x=2750`, on a *secondary*
+  display, so a user looking at the main screen still sees nothing happen.
+  `install_single_instance_log()` writes that exit to the log; the fix for the
+  position is not in, because no measurement here shows what would move it.
+  Nothing recorded any of this, so the first such report could only be guessed
+  at. `macdiag.py` now writes the phase name, the window's real geometry and
+  whether any of our windows is on the current Space to
+  `$APPDATA/PikaPet/startup.log` -- next to the save it describes, so a run with
+  `APPDATA` overridden for testing does not overwrite the real log. The hooks
+  are `show_starter_select` (select) and `setup_pet_window` (pet); the pet
+  window is logged 2 s in, because its position is only settled by the tick
+  loop. `visible_here()` deliberately answers per *app*, not per window:
+  matching CGWindowList bounds to a Tk geometry needs the title-bar height and
+  the Retina scale, while the fault being hunted is "the window exists and none
+  of it is on the user's screen".
+- **The game's own messages send macOS users to a tray that isn't there.** Five
+  player-facing strings say "작업표시줄 오른쪽 트레이 아이콘" or "트레이 아이콘"
+  (grep the disassembly for 트레이), and four of them are exactly the messages
+  that tell someone who has lost their pet where to look: already-running,
+  wild encounter, pet in the ball, battle still open. A real report came from
+  someone who got the wild-encounter banner and went looking for a tray icon.
+  `retarget_wording()` swaps those phrases for the actual ◓ menu item names
+  ("◓ → 🌿 야생 포켓몬 확인"), keeping the sentence in front of them intact.
+  It needs **two** hooks, because the strings arrive by two routes that do not
+  meet: `Misc._options` for widget text (the settings radio label) and
+  `install_message_wording()` for `messagebox`, whose text is not a widget
+  option. `MacTray.notify` applies it as well, so what `notify.log` records is
+  what the user was actually shown.
 - **A wild encounter can fire seconds after launch.** `_last_encounter_at`
   starts at 0 (pet.py:4611), so the 25s `ENCOUNTER_COOLDOWN` is already
   satisfied on the first tick and the 0.6%/s roll starts immediately -- every

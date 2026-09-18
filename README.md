@@ -125,3 +125,10 @@ run\pikapet.bat
 [이슈](https://github.com/Raspicor/appsol_pokemon/issues)로 알려주세요.
 
 그때 **macOS 버전**과 **PikaPet 버전**(Applications에서 PikaPet을 우클릭 → 정보 가져오기)을 함께 적어주시면 찾기가 훨씬 빠릅니다.
+
+**창이 안 뜬다거나 알림이 이상하다면** 이 폴더의 `startup.log`와 `notify.log`를
+함께 올려주세요. PikaPet이 켜질 때 무슨 일이 있었는지 적어둔 파일입니다.
+
+```
+~/Library/Application Support/PikaPet/
+```

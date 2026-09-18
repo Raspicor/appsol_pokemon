@@ -362,12 +362,53 @@ BROKEN_GLYPHS = {"\u2694": "\u2694\ufe0f"}
 TEXT_OPTIONS = frozenset(("text", "label", "title"))
 
 
+# macOS 에 없는 것을 가리키는 안내 문구. 게임은 Windows 용이라 "작업표시줄
+# 오른쪽 트레이 아이콘"으로 안내하는데, 여기에는 작업표시줄도 트레이도 없다.
+# 하필 이 네 문구가 전부 **펫을 잃어버린 사람에게 어디를 보라고 알려주는** 말이다.
+# 실제 신고: 야생 포켓몬 알림을 받은 사람이 트레이 아이콘을 찾다가 포기했다.
+# 그래서 ◓ 메뉴의 실제 항목 이름으로 바꿔 준다.
+WINDOWS_WORDING = {
+    "작업표시줄 오른쪽 트레이 아이콘을 확인해보세요.":
+        "화면 맨 위 메뉴 바의 ◓ 를 확인해보세요.",
+    "트레이 아이콘을 클릭해 확인해보세요.":
+        "화면 맨 위 메뉴 바의 ◓ → 🌿 야생 포켓몬 확인 을 눌러보세요.",
+    "트레이 아이콘에서 다시 꺼낼 수 있어요.":
+        "화면 맨 위 메뉴 바의 ◓ → 🔴 몬스터볼에서 꺼내기 로 꺼낼 수 있어요.",
+    "트레이 아이콘을 눌러 다시 열 수 있어요.":
+        "화면 맨 위 메뉴 바의 ◓ → ⚔️ 배틀 창 복구 를 눌러보세요.",
+    "조용히 트레이 아이콘 깜빡이기":
+        "조용히 메뉴 바 아이콘 깜빡이기",
+}
+
+# messagebox 에서 문구를 갈아끼울 함수들. 게임은 126곳에서 messagebox 를 쓴다.
+MESSAGE_FUNCTIONS = ("showinfo", "showwarning", "showerror", "askquestion",
+                     "askokcancel", "askyesno", "askyesnocancel",
+                     "askretrycancel")
+
+
+def retarget_wording(text):
+    """Windows 를 가리키는 안내를 macOS 의 ◓ 메뉴로 바꾼다.
+
+    아는 문구만 바꾼다. 부분 문자열로 갈아끼우므로 앞의 본문("몬스터볼 안에서
+    계속 자라고 있어요." 같은)은 그대로 남는다.
+    """
+    for windows, mac in WINDOWS_WORDING.items():
+        if windows in text:
+            text = text.replace(windows, mac)
+    return text
+
+
 def _fix_glyphs(value):
     """표시용 문자열에서 macOS가 못 그리는 기호를 이모지 표현으로 바꾼다."""
     for bad, good in BROKEN_GLYPHS.items():
         if bad in value and good not in value:
             value = value.replace(bad, good)
     return value
+
+
+def _fix_text(value):
+    """위젯에 들어가는 표시용 문자열 하나를 손본다. 기호와 안내 문구 둘 다."""
+    return retarget_wording(_fix_glyphs(value))
 
 
 def install_glyph_fix():
@@ -386,12 +427,12 @@ def install_glyph_fix():
                 for key in TEXT_OPTIONS:
                     v = kw.get(key)
                     if isinstance(v, str):
-                        kw[key] = _fix_glyphs(v)
+                        kw[key] = _fix_text(v)
             if isinstance(cnf, dict):
                 for key in TEXT_OPTIONS:
                     v = cnf.get(key)
                     if isinstance(v, str):
-                        cnf[key] = _fix_glyphs(v)
+                        cnf[key] = _fix_text(v)
         except Exception:
             pass
         return original(self, cnf, kw)
@@ -425,6 +466,38 @@ HOVER_LIGHTEN = 1.06
 # 요청 크기가 정확히 같아진다.
 BUTTON_PADX = 17
 BUTTON_PADY = 5
+
+
+def install_message_wording(module=None):
+    """`messagebox` 로 나가는 안내 문구를 macOS 쪽으로 돌린다.
+
+    `install_glyph_fix` 의 `Misc._options` 훅이 여기까지 닿지 않는다 -- 대화상자
+    문구는 위젯 옵션이 아니다. 특히 "PikaPet이 이미 실행 중이에요!" 는 앱을 눌러도
+    아무 일이 없어 보이는 사람이 받는 **유일한** 설명인데, 실측하면 이 대화상자는
+    주 화면이 아닌 곳에 뜰 수 있다 (이 기계에서 x=2750, 보조 모니터). 그 문구가
+    없는 트레이를 가리키고 있으면 아무 도움이 안 된다.
+
+    `title` 은 건드리지 않는다. 전부 'PikaPet' 이고 바꿀 이유가 없다.
+    """
+    if module is None:
+        from tkinter import messagebox as module
+
+    swapped = []
+    for name in MESSAGE_FUNCTIONS:
+        original = getattr(module, name, None)
+        if original is None:
+            continue
+
+        def wrap(original):
+            def call(title=None, message=None, **kw):
+                if isinstance(message, str):
+                    message = retarget_wording(message)
+                return original(title, message, **kw)
+            return call
+
+        setattr(module, name, wrap(original))
+        swapped.append(name)
+    return swapped
 
 
 def _shade(color, factor):
@@ -975,6 +1048,7 @@ class MacTray:
         배너를 띄우고(눌렀을 때 PikaPet이 올라온다), 그게 거부되면 osascript로
         떨어진다. 자세한 근거는 macnotify.py 참고.
         """
+        message = retarget_wording(message)
         if self._notifier is not None:
             try:
                 self._notifier.notify(message, title)
@@ -1018,6 +1092,20 @@ def _make_notifier(app):
     except Exception as exc:
         print(f"  알림 초기화 실패: {type(exc).__name__}: {exc}", flush=True)
         return None
+
+
+def _diag(action, *args, **kw):
+    """`macdiag` 의 기록 함수를 부른다. 기록이 게임을 깨뜨리지 않게 감싼다.
+
+    번들에는 stdout 이 없어서 `print` 로 남긴 것은 사라진다. 시작 단계에서 무엇이
+    일어났는지는 신고를 받은 뒤에야 궁금해지므로, 그때 읽을 수 있는 곳에 남긴다.
+    """
+    try:
+        import macdiag
+
+        getattr(macdiag, action)(*args, **kw)
+    except Exception:
+        pass
 
 
 def _centre_window(win):
@@ -1082,6 +1170,7 @@ def install_starter_window_fix(pet):
         return None
 
     def show_starter_select(root, on_pick, *args, **kw):
+        _diag("log_phase", "select")
         result = original(root, on_pick, *args, **kw)
         for step in (_centre_window, bring_to_front):
             try:
@@ -1089,9 +1178,14 @@ def install_starter_window_fix(pet):
             except Exception as exc:
                 print(f"  선택 창 {step.__name__} 실패: "
                       f"{type(exc).__name__}: {exc}", flush=True)
-        # 창이 매핑된 뒤 한 번 더. 첫 시도는 매핑 전에 묻힐 수 있다.
+        # 창이 매핑된 뒤 한 번 더. 첫 시도는 매핑 전에 묻힐 수 있다. 그 시점의
+        # 위치와 보이는지 여부를 남긴다 -- 사용자가 실제로 봤을 상태다.
+        def settle():
+            bring_to_front(root)
+            _diag("log_window", "선택 창", root)
+
         try:
-            root.after(300, lambda: bring_to_front(root))
+            root.after(300, settle)
         except Exception:
             pass
         return result
@@ -1109,6 +1203,7 @@ def install_window_patch(pet):
     original = pet.setup_pet_window
 
     def setup_pet_window(root):
+        _diag("log_phase", "pet")
         set_app_icon()
         before = install_font_defaults(root)
         if before and before != DEFAULT_FONT_SIZE:
@@ -1128,7 +1223,15 @@ def install_window_patch(pet):
             pet.MAGIC = "systemTransparent"
             install_sprite_alpha_patch(transparent=False)
         print(f"  투명도: {TRANSPARENCY_NOTES[mode]}", flush=True)
-        return original(root)
+        result = original(root)
+        # 2초 뒤에 본다. 펫의 위치는 저장된 좌표에서 시작해 tick 이 정리하므로,
+        # 바로 읽으면 아직 자리를 잡지 않은 값이 남는다. "펫이 안 보인다"는
+        # 신고에서 알아야 하는 것은 그 다음의 안정된 위치다.
+        try:
+            root.after(2000, lambda: _diag("log_window", "펫 창", root))
+        except Exception:
+            pass
+        return result
 
     pet.setup_pet_window = setup_pet_window
 
@@ -1513,6 +1616,33 @@ def install_right_click_fallback():
 # pet.pyc 로드
 # --------------------------------------------------------------------------
 
+def install_single_instance_log(layer):
+    """이미 돌고 있어서 그냥 끝나는 실행을 기록에 남긴다.
+
+    게임은 락을 못 잡으면 `tk.Tk()` 를 withdraw 한 뒤 messagebox 를 띄우고
+    `return` 한다 (pet.py:19049~19060). 그 검사는 `load_state()` **앞**이라,
+    세이브를 지우든 앱을 다시 설치하든 결과가 같다 -- 락을 쥔 프로세스가 살아
+    있는 동안에는 아무것도 안 뜬다.
+
+    대화상자는 실측상 뜨기는 한다. 다만 이 기계에서는 주 화면이 아닌 x=2750
+    (보조 모니터) 에 떴다. 보조 화면을 안 보고 있거나 전체화면 앱 뒤에 있으면
+    사용자에게는 여전히 "눌렀는데 아무 일도 없다" 다. 그때 남는 유일한 자료가
+    이 줄이다. `log_start` 다음에 단계 줄이 없는 것으로도 알 수 있지만,
+    없는 것을 읽어내는 것보다 적혀 있는 것이 낫다.
+    """
+    original = layer.acquire_single_instance_lock
+
+    def acquire_single_instance_lock(*args, **kw):
+        got = original(*args, **kw)
+        if not got:
+            _diag("log", "이미 실행 중 -- 다른 PikaPet 이 먼저 켜져 있어 이번"
+                         " 실행은 여기서 끝납니다 (메뉴 바 ◓ 를 확인하세요)")
+        return got
+
+    layer.acquire_single_instance_lock = acquire_single_instance_lock
+    return original
+
+
 def load_pet():
     """pet.pyc를 __main__ 블록 실행 없이 모듈로 import한다."""
     path = os.path.join(HERE, "pet.pyc")
@@ -1531,11 +1661,14 @@ def main():
 
     sys.path.insert(0, HERE)        # pet.pyc가 spriteanim.pyc를 찾도록
     install_save_paths()
+    _diag("log_start")              # APPDATA 가 정해진 뒤여야 저장 경로를 안다
 
     import maclayer
     sys.modules["winlayer"] = maclayer   # pet.pyc가 `import winlayer`를 돌기 전에
+    install_single_instance_log(maclayer)
 
     install_font_defaults_everywhere()
+    install_message_wording()
     install_transparency_shim()
     install_titlebar_restore()
     install_glyph_fix()

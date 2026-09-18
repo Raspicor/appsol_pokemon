@@ -14,6 +14,8 @@
 
 import os
 import sys
+import shutil
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +24,30 @@ import tkinter as tk
 
 import mactray
 import pikapet_mac as L
+
+
+# 이 모듈의 테스트는 런처를 그대로 부르므로, 손대지 않으면 `macdiag` 가
+# ~/Library/Application Support/PikaPet/startup.log -- **실제 사용자의 기록** --
+# 에 줄을 남긴다. 실제로 그렇게 됐다: StarterWindowFix 가 돌 때마다 select 단계
+# 다섯 줄이 쌓여서, 신고를 받고 읽을 기록이 테스트 소음으로 덮였다. 개별 setUp
+# 대신 모듈 단위로 막는다 -- 앞으로 추가되는 테스트까지 덮으려면 이쪽이어야 한다.
+_log_home = None
+
+
+def setUpModule():
+    global _log_home
+    import macdiag
+
+    _log_home = (macdiag.LOG_PATH, tempfile.mkdtemp())
+    macdiag.LOG_PATH = os.path.join(_log_home[1], "startup.log")
+
+
+def tearDownModule():
+    import macdiag
+
+    original, tmp = _log_home
+    macdiag.LOG_PATH = original
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 class FakeMisc:
@@ -687,6 +713,262 @@ class StarterWindowFix(unittest.TestCase):
         pet = self.FakePet()
         self.assertIsNone(L.install_starter_window_fix(pet))
         self.assertFalse(hasattr(pet, "show_starter_select"))
+
+
+class StartupLogWiring(unittest.TestCase):
+    """시작 기록이 실제로 걸려 있는가.
+
+    이것이 없으면 "선택 창이 안 뜬다"는 신고에 답할 수 없다. 선택 창은 저장
+    파일에 고른 포켓몬이 없을 때만 나오므로(pet.py:19063), 안 뜨는 것이 정상일
+    수도 있고 창이 다른 Space 에 생긴 것일 수도 있다. 단계 이름이 그 둘을
+    가른다.
+    """
+
+    class FakeRoot:
+        def __init__(self):
+            self.scheduled = []
+
+        def after(self, _ms, fn):
+            self.scheduled.append(fn)
+
+    def setUp(self):
+        self.diag = []
+        self.original_diag = L._diag
+        self.addCleanup(setattr, L, "_diag", self.original_diag)
+        self.addCleanup(setattr, L, "_centre_window", L._centre_window)
+        self.addCleanup(setattr, L, "bring_to_front", L.bring_to_front)
+        L._diag = lambda action, *a, **k: self.diag.append((action,) + a)
+        # 위치 보정 자체는 StarterWindowFix 가 본다. 여기서는 기록만 본다.
+        L._centre_window = lambda win: None
+        L.bring_to_front = lambda win: None
+
+    def test_the_select_phase_is_recorded_before_the_window_opens(self):
+        opened = []
+
+        def show(root, cb):
+            # 원본이 돌기 전에 이미 남아 있어야 한다. 원본이 예외를 내도
+            # 어느 단계였는지는 알 수 있어야 하기 때문이다.
+            opened.append(list(self.diag))
+
+        pet = type("P", (), {"show_starter_select": staticmethod(show)})()
+        L.install_starter_window_fix(pet)
+        pet.show_starter_select(self.FakeRoot(), lambda name: None)
+        self.assertEqual(opened, [[("log_phase", "select")]])
+
+    def test_the_window_position_is_recorded_once_it_settles(self):
+        pet = type("P", (), {"show_starter_select": staticmethod(
+            lambda root, cb: None)})()
+        L.install_starter_window_fix(pet)
+        root = self.FakeRoot()
+        pet.show_starter_select(root, None)
+        self.diag.clear()
+        root.scheduled[0]()
+        self.assertEqual(self.diag, [("log_window", "선택 창", root)])
+
+    def test_the_pet_phase_is_recorded_too(self):
+        # 이 줄이 있으면 "선택 창을 건너뛴 것"이 저장 파일 때문임을 알 수 있다.
+        self.addCleanup(setattr, L, "set_app_icon", L.set_app_icon)
+        self.addCleanup(setattr, L, "install_font_defaults",
+                        L.install_font_defaults)
+        self.addCleanup(setattr, L, "transparency_mode", L.transparency_mode)
+        L.set_app_icon = lambda: None
+        L.install_font_defaults = lambda root: None
+        L.transparency_mode = lambda root: "none"
+
+        called = []
+        pet = type("P", (), {})()
+        pet.MAGIC = "#ff00ff"
+        pet.setup_pet_window = lambda root: called.append(root) or "속값"
+        L.install_window_patch(pet)
+        root = self.FakeRoot()
+        got = pet.setup_pet_window(root)
+        self.assertEqual(got, "속값", "원본의 반환값을 그대로 넘겨야 한다")
+        self.assertEqual(called, [root])
+        self.assertIn(("log_phase", "pet"), self.diag)
+        # 펫의 위치는 나중에 정해진다. 바로 읽으면 아직 자리를 안 잡은 값이다.
+        self.assertEqual(len(root.scheduled), 1)
+        root.scheduled[0]()
+        self.assertIn(("log_window", "펫 창", root), self.diag)
+
+    def test_a_broken_logger_cannot_break_the_game(self):
+        L._diag = self.original_diag
+        import macdiag
+
+        original = macdiag.log_phase
+        self.addCleanup(setattr, macdiag, "log_phase", original)
+
+        def boom(name):
+            raise OSError("디스크가 꽉 찼다")
+
+        macdiag.log_phase = boom
+        pet = type("P", (), {"show_starter_select": staticmethod(
+            lambda root, cb: "떴다")})()
+        L.install_starter_window_fix(pet)
+        self.assertEqual(pet.show_starter_select(self.FakeRoot(), None), "떴다")
+
+    def test_an_unknown_action_is_swallowed(self):
+        L._diag = self.original_diag
+        L._diag("그런함수없음", 1, 2)
+
+
+class WindowsWording(unittest.TestCase):
+    """게임의 안내 문구는 macOS 에 없는 것을 가리킨다.
+
+    실제 신고: 야생 포켓몬 알림을 받은 사람이 "트레이 아이콘"을 찾다가 포기했다.
+    macOS 에는 작업표시줄도 트레이도 없다. 그런데 이 문구들은 하필 **펫을
+    잃어버린 사람에게 어디를 보라고 알려주는** 말이라서, 틀리면 그 사람이 갈 곳이
+    없어진다.
+    """
+
+    # 게임 바이트코드에 실제로 들어 있는 문자열 (disasm/pet.dis.txt).
+    GAME_STRINGS = [
+        "PikaPet이 이미 실행 중이에요!\n작업표시줄 오른쪽 트레이 아이콘을 확인해보세요.",
+        "야생 포켓몬이 나타난 것 같아요!\n트레이 아이콘을 클릭해 확인해보세요.",
+        "몬스터볼 안에서 계속 자라고 있어요.\n트레이 아이콘에서 다시 꺼낼 수 있어요.",
+        "전투가 계속되고 있어요. 트레이 아이콘을 눌러 다시 열 수 있어요.",
+        "조용히 트레이 아이콘 깜빡이기 (추천)",
+    ]
+
+    def test_no_game_message_still_mentions_a_tray(self):
+        for text in self.GAME_STRINGS:
+            got = L.retarget_wording(text)
+            self.assertNotIn("트레이", got, text)
+            self.assertNotIn("작업표시줄", got, text)
+
+    def test_every_message_points_at_the_menu_bar(self):
+        for text in self.GAME_STRINGS[:4]:
+            self.assertIn("◓", L.retarget_wording(text), text)
+
+    def test_the_body_of_the_message_is_kept(self):
+        # 부분 문자열만 갈아끼운다. 앞의 설명은 게임의 말 그대로 남아야 한다.
+        got = L.retarget_wording(
+            "몬스터볼 안에서 계속 자라고 있어요.\n트레이 아이콘에서 다시 꺼낼 수 있어요.")
+        self.assertTrue(got.startswith("몬스터볼 안에서 계속 자라고 있어요."), got)
+
+    def test_each_message_names_the_menu_item_that_fixes_it(self):
+        pairs = [("야생 포켓몬이 나타난 것 같아요!\n트레이 아이콘을 클릭해 확인해보세요.",
+                  "야생 포켓몬 확인"),
+                 ("몬스터볼 안에서 계속 자라고 있어요.\n트레이 아이콘에서 다시 꺼낼 수 있어요.",
+                  "몬스터볼에서 꺼내기"),
+                 ("전투가 계속되고 있어요. 트레이 아이콘을 눌러 다시 열 수 있어요.",
+                  "배틀 창 복구")]
+        for text, item in pairs:
+            self.assertIn(item, L.retarget_wording(text), text)
+
+    def test_an_unrelated_message_is_untouched(self):
+        for text in ("격투 스트레이트", "레벨이 올랐어요!", ""):
+            self.assertEqual(L.retarget_wording(text), text)
+
+    def test_widget_text_goes_through_it_too(self):
+        # 설정 창의 라디오 버튼 이름은 위젯 옵션으로 들어온다.
+        got = L._fix_text("조용히 트레이 아이콘 깜빡이기 (추천)")
+        self.assertIn("메뉴 바 아이콘", got)
+
+    def test_the_glyph_fix_still_applies_to_widget_text(self):
+        self.assertEqual(L._fix_text("\u2694 배틀"), "\u2694\ufe0f 배틀")
+
+
+class MessageBoxWording(unittest.TestCase):
+    """대화상자 문구는 `Misc._options` 를 지나지 않는다."""
+
+    class FakeBox:
+        def __init__(self):
+            self.calls = []
+
+        def _make(self, name):
+            def fn(title=None, message=None, **kw):
+                self.calls.append((name, title, message, kw))
+                return "눌렀음"
+            return fn
+
+    def setUp(self):
+        self.box = self.FakeBox()
+        for name in L.MESSAGE_FUNCTIONS:
+            setattr(self.box, name, self.box._make(name))
+
+    def test_the_already_running_message_is_translated(self):
+        # 앱을 눌러도 아무 일이 없어 보이는 사람이 받는 유일한 설명이다.
+        L.install_message_wording(self.box)
+        self.box.showinfo(
+            "PikaPet",
+            "PikaPet이 이미 실행 중이에요!\n작업표시줄 오른쪽 트레이 아이콘을 확인해보세요.")
+        name, title, message, _ = self.box.calls[0]
+        self.assertEqual(title, "PikaPet")
+        self.assertIn("메뉴 바의 ◓", message)
+        self.assertNotIn("작업표시줄", message)
+
+    def test_every_dialog_function_is_covered(self):
+        swapped = L.install_message_wording(self.box)
+        self.assertEqual(set(swapped), set(L.MESSAGE_FUNCTIONS))
+
+    def test_the_return_value_is_passed_back(self):
+        # askyesno 의 답이 사라지면 게임의 분기가 전부 망가진다.
+        L.install_message_wording(self.box)
+        self.assertEqual(self.box.askyesno("PikaPet", "할까요?"), "눌렀음")
+
+    def test_other_arguments_survive(self):
+        L.install_message_wording(self.box)
+        self.box.showwarning("PikaPet", "조심", icon="warning", parent=None)
+        _, _, _, kw = self.box.calls[0]
+        self.assertEqual(kw, {"icon": "warning", "parent": None})
+
+    def test_a_missing_function_is_skipped(self):
+        del self.box.askretrycancel
+        swapped = L.install_message_wording(self.box)
+        self.assertNotIn("askretrycancel", swapped)
+
+
+class SingleInstanceLog(unittest.TestCase):
+    """이미 돌고 있어서 그냥 끝나는 실행.
+
+    이 검사는 `load_state()` 앞이라 (pet.py:19049 대 19062) 세이브를 지우든 앱을
+    다시 설치하든 결과가 같다. 기록이 없으면 "지우고 새로 설치해도 안 뜬다"에
+    답할 수 없다.
+    """
+
+    class FakeLayer:
+        def __init__(self, got):
+            self._got = got
+            self.calls = []
+
+        def acquire_single_instance_lock(self, name="기본"):
+            self.calls.append(name)
+            return self._got
+
+    def setUp(self):
+        self.diag = []
+        self.original = L._diag
+        self.addCleanup(setattr, L, "_diag", self.original)
+        L._diag = lambda action, *a, **k: self.diag.append((action,) + a)
+
+    def test_a_blocked_launch_is_written_down(self):
+        layer = self.FakeLayer(False)
+        L.install_single_instance_log(layer)
+        self.assertFalse(layer.acquire_single_instance_lock())
+        self.assertEqual(len(self.diag), 1)
+        action, message = self.diag[0]
+        self.assertEqual(action, "log")
+        self.assertIn("이미 실행 중", message)
+        self.assertIn("◓", message, "어디를 보라고 알려줘야 한다")
+
+    def test_a_normal_launch_logs_nothing_here(self):
+        layer = self.FakeLayer(True)
+        L.install_single_instance_log(layer)
+        self.assertTrue(layer.acquire_single_instance_lock())
+        self.assertEqual(self.diag, [])
+
+    def test_the_answer_is_not_changed(self):
+        # 락 판정을 뒤집으면 펫이 둘이 된다.
+        for got in (True, False):
+            layer = self.FakeLayer(got)
+            L.install_single_instance_log(layer)
+            self.assertEqual(layer.acquire_single_instance_lock(), got)
+
+    def test_the_mutex_name_is_passed_through(self):
+        layer = self.FakeLayer(True)
+        L.install_single_instance_log(layer)
+        layer.acquire_single_instance_lock("PikaPetSingleInstanceMutex")
+        self.assertEqual(layer.calls, ["PikaPetSingleInstanceMutex"])
 
 
 if __name__ == "__main__":
