@@ -245,6 +245,33 @@ def install_font_defaults(root):
         return None
 
 
+def install_font_defaults_everywhere():
+    """새 Tk 루트가 생길 때마다 기본 폰트를 맞춘다.
+
+    `setup_pet_window` 에서만 부르면 **스타터 선택 창을 놓친다.** 게임은 세이브가
+    없을 때 `PetApp` 보다 먼저 별도의 `tk.Tk()` 를 만들어 거기에 선택 창을 그린다
+    (pet.py:19067). 그 창은 `geometry('860x380')` 로 크기가 고정돼 있는데, 실측하면
+    내용이 **930x262** 를 요구한다 -- 가로 70px 이 넘쳐서 다섯 번째 포켓몬(이브이)
+    의 시작 버튼이 오른쪽에서 잘린다. 폰트를 맞추면 790x260 이 되어 들어간다.
+
+    `TkDefaultFont` 는 인터프리터마다 따로 있으므로 루트마다 걸어야 한다.
+    `install_font_defaults` 는 이미 작아져 있으면 그냥 돌아오니 여러 번 불려도
+    괜찮다.
+    """
+    original = tk.Tk.__init__
+
+    def __init__(self, *args, **kw):
+        original(self, *args, **kw)
+        try:
+            install_font_defaults(self)
+        except Exception:
+            # 폰트가 조금 넘치는 것이 앱이 안 뜨는 것보다 낫다.
+            pass
+
+    tk.Tk.__init__ = __init__
+    return original
+
+
 def _restore_titlebar(win):
     """overrideredirect를 끈 Tk 창에 macOS 타이틀바를 돌려준다.
 
@@ -993,6 +1020,86 @@ def _make_notifier(app):
         return None
 
 
+def _centre_window(win):
+    """창을 주 화면 가운데 위쪽에 놓는다. 크기는 건드리지 않는다."""
+    win.update_idletasks()
+    width = win.winfo_width() or win.winfo_reqwidth()
+    height = win.winfo_height() or win.winfo_reqheight()
+    x = max(0, (win.winfo_screenwidth() - width) // 2)
+    y = max(0, (win.winfo_screenheight() - height) // 3)
+    win.geometry(f"+{x}+{y}")
+
+
+def bring_to_front(win):
+    """앱을 활성 앱으로 만들고 창을 맨 앞으로 올린다. 활성화됐으면 True.
+
+    `lift()` 만으로는 부족하다. 방금 띄운 프로세스는 아직 활성 앱이 아니고,
+    그 상태에서는 창이 다른 Space 에 머무를 수 있다.
+    """
+    activated = False
+    try:
+        import AppKit
+
+        AppKit.NSApp().activateIgnoringOtherApps_(True)
+        activated = True
+    except Exception:
+        pass
+    try:
+        win.lift()
+        win.focus_force()
+    except Exception:
+        pass
+    return activated
+
+
+def install_starter_window_fix(pet):
+    """세이브가 없을 때 뜨는 스타터 선택 창을 찾을 수 있게 만든다.
+
+    두 가지를 한다.
+
+    **앞으로 끌어온다.** 이 창은 게임이 `PetApp` 보다 먼저 만드는 별도의
+    `tk.Tk()` 위에 있고 (pet.py:19067), 막 띄운 프로세스는 아직 활성 앱이 아니다.
+    실측: 전체화면 앱이 떠 있는 상태에서 백그라운드로 실행하면 창은 제대로
+    만들어지는데 (860x412+34+64, alpha 1.0) CGWindowList 가 `onscreen` 을
+    돌려주지 않는다 -- 전체화면 앱은 자기 Space 를 쓰고 새 창은 원래 Space 로
+    가기 때문이다. 같은 코드를 포그라운드로 띄우면 `visible=True` 로 잘 보인다.
+    사용자 눈에는 앱을 눌렀는데 아무 일도 안 일어난 것으로 보인다.
+
+    **가운데로 놓는다.** 게임은 `geometry('860x380')` 으로 크기만 정하고 위치는
+    말하지 않아서 Tk 가 화면 왼쪽 위 구석 (+5+35) 에 붙인다. 정해지지 않은 값을
+    채우는 것이라 게임의 선택을 덮어쓰는 것이 아니다.
+
+    `PetApp` 의 펫 창에는 이것을 하지 않는다. 그 창은 `overrideredirect` 이고,
+    켤 때마다 작업 중인 앱에서 포커스를 훔쳐가면 안 된다. 선택 창은 반대로
+    사용자의 입력을 반드시 받아야 하는 창이다.
+
+    실패해도 창은 그대로 뜬다. 위치가 어정쩡한 것이 앱이 안 뜨는 것보다 낫다.
+    """
+    original = getattr(pet, "show_starter_select", None)
+    if original is None:
+        print("  스타터 선택 창 보정 건너뜀: show_starter_select 가 없습니다",
+              flush=True)
+        return None
+
+    def show_starter_select(root, on_pick, *args, **kw):
+        result = original(root, on_pick, *args, **kw)
+        for step in (_centre_window, bring_to_front):
+            try:
+                step(root)
+            except Exception as exc:
+                print(f"  선택 창 {step.__name__} 실패: "
+                      f"{type(exc).__name__}: {exc}", flush=True)
+        # 창이 매핑된 뒤 한 번 더. 첫 시도는 매핑 전에 묻힐 수 있다.
+        try:
+            root.after(300, lambda: bring_to_front(root))
+        except Exception:
+            pass
+        return result
+
+    pet.show_starter_select = show_starter_select
+    return original
+
+
 def install_window_patch(pet):
     """PikaPet이 진짜 루트 창을 만든 뒤에 투명도를 결정한다.
 
@@ -1428,6 +1535,7 @@ def main():
     import maclayer
     sys.modules["winlayer"] = maclayer   # pet.pyc가 `import winlayer`를 돌기 전에
 
+    install_font_defaults_everywhere()
     install_transparency_shim()
     install_titlebar_restore()
     install_glyph_fix()
@@ -1440,6 +1548,7 @@ def main():
     pet = load_pet()
     install_window_patch(pet)
     install_tray_replacement(pet)
+    install_starter_window_fix(pet)
 
     print(f"macOS PikaPet | Tk {tk.TkVersion} | 메뉴: 펫을 우클릭"
           + (" | Button-3을 Button-2에도 연결" if remapped_buttons else ""),
