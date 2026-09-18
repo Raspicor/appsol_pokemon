@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -348,6 +349,7 @@ class OrchestratingIt(unittest.TestCase):
             find=lambda tag: ("u", 10, "a.dmg"),
             fetch=lambda *a, **k: 10,
             stage=lambda dmg, work, ver: dmg + ".app")
+        self.addCleanup(self._clean, job)
         job._work()
         self.assertEqual(calls, [])
         kinds = [k for k, _ in job.events]
@@ -422,11 +424,19 @@ class OrchestratingIt(unittest.TestCase):
         def done(result):
             self.result = result
 
-        return macupgrade.Upgrade(
+        job = macupgrade.Upgrade(
             self.root, "0.0.6", on_done=done,
             find=find or (lambda tag: ("u", 10, "a.dmg")),
             fetch=fetch or (lambda *a, **k: 10),
             stage=stage or (lambda dmg, work, ver: "/tmp/staged.app"))
+        # 성공 경로에서는 _discard 가 불리지 않는다 (교체 스크립트가 치운다).
+        # 테스트에서는 그 스크립트가 없으므로 여기서 치운다.
+        self.addCleanup(self._clean, job)
+        return job
+
+    def _clean(self, job):
+        if job.workdir and macupgrade.WORK_MARK in job.workdir:
+            shutil.rmtree(job.workdir, ignore_errors=True)
 
 
 class FakeRoot:
@@ -435,6 +445,46 @@ class FakeRoot:
 
     def after(self, _ms, fn):
         self.scheduled.append(fn)
+
+
+class SweepingStaleWork(unittest.TestCase):
+    """끊긴 업데이트가 남긴 임시 폴더 치우기.
+
+    나이를 보는 것이 핵심이다. 앱이 시작될 때 교체 스크립트가 아직 돌고 있을
+    수 있고, 그 폴더를 지우면 진행 중인 교체가 깨진다.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def make_dir(self, name, age_sec=0):
+        path = os.path.join(self.tmp, name)
+        os.makedirs(path)
+        if age_sec:
+            old = time.time() - age_sec
+            os.utime(path, (old, old))
+        return path
+
+    def test_an_old_work_directory_is_removed(self):
+        path = self.make_dir(macupgrade.WORK_MARK + "old", age_sec=7 * 3600)
+        self.assertEqual(macupgrade.sweep_stale_work(tmpdir=self.tmp), 1)
+        self.assertFalse(os.path.exists(path))
+
+    def test_a_fresh_one_is_left_alone(self):
+        # 교체가 진행 중일 수 있다. 지우면 그것을 깨뜨린다.
+        path = self.make_dir(macupgrade.WORK_MARK + "busy")
+        self.assertEqual(macupgrade.sweep_stale_work(tmpdir=self.tmp), 0)
+        self.assertTrue(os.path.exists(path))
+
+    def test_other_directories_are_never_touched(self):
+        other = self.make_dir("무관한폴더", age_sec=99 * 3600)
+        macupgrade.sweep_stale_work(tmpdir=self.tmp)
+        self.assertTrue(os.path.exists(other))
+
+    def test_a_missing_directory_is_not_an_error(self):
+        self.assertEqual(
+            macupgrade.sweep_stale_work(tmpdir=os.path.join(self.tmp, "없음")), 0)
 
 
 class ApplyingIt(unittest.TestCase):

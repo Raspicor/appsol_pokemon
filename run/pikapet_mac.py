@@ -1337,6 +1337,16 @@ def install_update_check(app):
             print("  업데이트 확인: 번들 버전을 못 읽어 건너뜀", flush=True)
             return None
 
+        # 지난 업데이트가 중간에 끊겼다면 170MB 가 임시 폴더에 남아 있다.
+        try:
+            import macupgrade
+
+            swept = macupgrade.sweep_stale_work()
+            if swept:
+                print(f"  남아 있던 업데이트 임시 폴더 {swept}개 정리", flush=True)
+        except Exception:
+            pass
+
         def on_update(tag, url):
             print(f"  새 버전 {tag} (현재 {current})", flush=True)
             menu = getattr(app, "_pikapet_menu_bar", None)

@@ -504,6 +504,40 @@ def apply_and_relaunch(staged, target=None, workdir=None):
         return False, f"{type(exc).__name__}: {exc}"
 
 
+def sweep_stale_work(max_age_sec=6 * 3600, tmpdir=None):
+    """오래 남은 작업 폴더를 치운다. 지운 개수를 돌려준다.
+
+    꺼내 놓기까지는 성공했는데 교체를 시작하지 못한 경우 (앱이 그 사이에
+    죽었거나 스크립트를 띄우지 못했거나) 170MB 짜리 폴더가 남는다. 정상
+    경로에서는 교체 스크립트가 스스로 치우므로 이건 드문 경우다.
+
+    **나이를 보는 이유**: 앱이 시작되는 시점에 교체 스크립트가 아직 돌고
+    있을 수 있다. 그 폴더를 지우면 진행 중인 교체를 깨뜨린다. 교체는 몇
+    초면 끝나므로 여섯 시간이면 안전하게 지나간 것만 남는다.
+    """
+    removed = 0
+    base = tmpdir or tempfile.gettempdir()
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return 0
+    now = time.time()
+    for name in names:
+        if not name.startswith(WORK_MARK):
+            continue
+        path = os.path.join(base, name)
+        try:
+            if not os.path.isdir(path):
+                continue
+            if now - os.path.getmtime(path) < max_age_sec:
+                continue
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def log(message):
     """update.log 에 한 줄 남긴다. 실패해도 조용히 넘어간다."""
     try:
