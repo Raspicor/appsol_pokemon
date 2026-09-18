@@ -48,7 +48,7 @@ def _log(message):
     try:
         os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as fh:
-            fh.write(f"{time.strftime('%H:%M:%S')} {message}\n")
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
     except Exception:
         pass
 
@@ -69,14 +69,24 @@ def _applescript_string(text):
 
 
 def post_with_osascript(message, title):
-    """확실히 뜨는 폴백. 배너 소유자는 스크립트 편집기가 된다."""
+    """확실히 뜨는 폴백. 배너 소유자는 스크립트 편집기가 된다.
+
+    **보낸 것을 기록한다.** 배포되는 ad-hoc 빌드는 늘 이 경로를 타는데, 기록이
+    없으면 "이 알림이 왜 떴지"에 나중에 답할 방법이 없다. 배너 소유자가 스크립트
+    편집기라서 사용자 쪽에서도 출처를 알 수 없기 때문에 더 그렇다. 한 줄이 한
+    알림이고, 줄바꿈은 눕혀서 한 줄로 만든다.
+    """
+    flat = " / ".join(part.strip() for part in str(message).splitlines()
+                      if part.strip())
     try:
         script = "display notification {} with title {}".format(
             _applescript_string(message), _applescript_string(title))
         subprocess.Popen(["osascript", "-e", script],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _log(f"osascript 알림: [{title}] {flat}")
         return True
-    except Exception:
+    except Exception as exc:
+        _log(f"osascript 알림 실패: {type(exc).__name__}: {exc} / {flat}")
         return False
 
 

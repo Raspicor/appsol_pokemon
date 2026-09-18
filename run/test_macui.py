@@ -548,5 +548,146 @@ class MenuBarContents(unittest.TestCase):
                 fn()                        # 예외가 나가면 메뉴가 죽는다
 
 
+class FontOnEveryRoot(unittest.TestCase):
+    """폰트 보정이 스타터 선택 창까지 닿는가.
+
+    게임은 세이브가 없을 때 PetApp 보다 먼저 별도의 `tk.Tk()` 를 만들어 거기에
+    선택 창을 그린다 (pet.py:19067). `setup_pet_window` 에서만 폰트를 맞추면 그
+    창을 놓치는데, 그 창은 크기가 860x380 으로 고정돼 있고 내용은 실측 930x262 를
+    요구한다 -- 다섯 번째 포켓몬의 시작 버튼이 오른쪽에서 잘린다.
+    """
+
+    def setUp(self):
+        self.original_init = tk.Tk.__init__
+        self.original_apply = L.install_font_defaults
+        self.addCleanup(self._restore)
+        self.seen = []
+        tk.Tk.__init__ = lambda self, *a, **k: None
+        L.install_font_defaults = lambda root: self.seen.append(root)
+
+    def _restore(self):
+        tk.Tk.__init__ = self.original_init
+        L.install_font_defaults = self.original_apply
+
+    def make_root(self, *args, **kw):
+        root = tk.Tk.__new__(tk.Tk)
+        tk.Tk.__init__(root, *args, **kw)
+        return root
+
+    def test_a_new_root_gets_the_font_fix(self):
+        L.install_font_defaults_everywhere()
+        root = self.make_root()
+        self.assertEqual(self.seen, [root])
+
+    def test_every_root_gets_it_not_just_the_first(self):
+        # TkDefaultFont 는 인터프리터마다 따로 있으므로 루트마다 걸어야 한다.
+        L.install_font_defaults_everywhere()
+        a, b = self.make_root(), self.make_root()
+        self.assertEqual(self.seen, [a, b])
+
+    def test_the_original_init_still_runs_with_its_arguments(self):
+        calls = []
+        tk.Tk.__init__ = lambda self, *a, **k: calls.append((a, k))
+        L.install_font_defaults_everywhere()
+        self.make_root("screenname", useTk=1)
+        self.assertEqual(calls, [(("screenname",), {"useTk": 1})])
+
+    def test_a_font_failure_does_not_stop_the_window(self):
+        # 레이아웃이 조금 넘치는 것이 앱이 안 뜨는 것보다 낫다.
+        def boom(root):
+            raise RuntimeError("폰트 없음")
+
+        L.install_font_defaults = boom
+        L.install_font_defaults_everywhere()
+        self.make_root()                    # 예외가 새어 나오면 실패
+
+
+class StarterWindowFix(unittest.TestCase):
+    """세이브가 없을 때 뜨는 선택 창을 찾을 수 있게 만드는 보정.
+
+    실측한 고장: 전체화면 앱이 떠 있을 때 백그라운드로 띄우면 창이 제대로
+    만들어지는데도 (860x412+34+64, alpha 1.0) CGWindowList 가 onscreen 을
+    돌려주지 않는다. 막 띄운 프로세스는 활성 앱이 아니고, 전체화면 앱이 쓰는
+    Space 가 아닌 원래 Space 로 창이 가기 때문이다. 사용자에게는 앱이 아무
+    반응도 없는 것으로 보인다. 보정 후 onscreen=True, +530+233.
+    """
+
+    class FakePet:
+        def __init__(self, fn=None):
+            if fn is not None:
+                self.show_starter_select = fn
+
+    class FakeRoot:
+        def __init__(self):
+            self.scheduled = []
+
+        def after(self, _ms, fn):
+            self.scheduled.append(fn)
+
+    def setUp(self):
+        self.centred = []
+        self.fronted = []
+        self.original_centre = L._centre_window
+        self.original_front = L.bring_to_front
+        self.addCleanup(self._restore)
+        L._centre_window = lambda win: self.centred.append(win)
+        L.bring_to_front = lambda win: self.fronted.append(win)
+
+    def _restore(self):
+        L._centre_window = self.original_centre
+        L.bring_to_front = self.original_front
+
+    def test_the_window_is_centred_and_raised(self):
+        calls = []
+
+        def show(root, cb):
+            calls.append((root, cb))
+            return "속값"
+
+        pet = self.FakePet(show)
+        L.install_starter_window_fix(pet)
+        root, cb = self.FakeRoot(), (lambda name: None)
+        got = pet.show_starter_select(root, cb)
+        self.assertEqual(calls, [(root, cb)])
+        self.assertEqual(got, "속값", "원본의 반환값을 그대로 넘겨야 한다")
+        self.assertEqual(self.centred, [root])
+        self.assertEqual(self.fronted, [root])
+
+    def test_it_tries_again_once_the_window_is_mapped(self):
+        # 첫 시도는 매핑 전이라 묻힐 수 있다.
+        pet = self.FakePet(lambda root, cb: None)
+        L.install_starter_window_fix(pet)
+        root = self.FakeRoot()
+        pet.show_starter_select(root, lambda name: None)
+        self.assertEqual(len(root.scheduled), 1)
+        self.fronted.clear()
+        root.scheduled[0]()
+        self.assertEqual(self.fronted, [root])
+
+    def test_extra_arguments_are_passed_through(self):
+        seen = []
+        pet = self.FakePet(lambda root, cb, *a, **k: seen.append((a, k)))
+        L.install_starter_window_fix(pet)
+        pet.show_starter_select(self.FakeRoot(), None, "더", key=1)
+        self.assertEqual(seen, [(("더",), {"key": 1})])
+
+    def test_a_failure_does_not_stop_the_window(self):
+        # 위치가 어정쩡한 것이 앱이 안 뜨는 것보다 낫다.
+        def boom(win):
+            raise RuntimeError("화면 정보 없음")
+
+        L._centre_window = boom
+        L.bring_to_front = boom
+        pet = self.FakePet(lambda root, cb: "떴다")
+        L.install_starter_window_fix(pet)
+        self.assertEqual(
+            pet.show_starter_select(self.FakeRoot(), None), "떴다")
+
+    def test_a_game_without_the_function_is_left_alone(self):
+        pet = self.FakePet()
+        self.assertIsNone(L.install_starter_window_fix(pet))
+        self.assertFalse(hasattr(pet, "show_starter_select"))
+
+
 if __name__ == "__main__":
     unittest.main()
