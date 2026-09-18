@@ -19,7 +19,7 @@ runtime. Keep it that way: patch from the launcher, don't rewrite the game.
 ./install.sh                                          # set the machine up (idempotent)
 run/pikapet.sh                                        # launch
 tools/make_dmg.sh                                     # build dist/PikaPet-<ver>.dmg (default 0.0.1)
-.venv/bin/python -m unittest discover -s run -v       # 194 tests, all should pass
+.venv/bin/python -m unittest discover -s run -v       # 215 tests, all should pass
 .venv/bin/python tools/doctor.py                      # diagnose a broken environment
 PIKAPET_VENV=/path/to/venv run/pikapet.sh             # use a different venv
 ```
@@ -73,6 +73,7 @@ with junctions, which need no admin rights.
 | `run/test_macupdate.py` | Tests for the update check. |
 | `run/macupgrade.py` | Downloads a release and replaces the installed app. |
 | `run/test_macupgrade.py` | Tests for the self-update, including the swap script. |
+| `run/test_macnotify.py` | Tests that every notification we send is written down. |
 | `run/pet.pyc` | **The game.** Windows-built bytecode, run as-is. |
 | `disasm/` | CPython `dis` output. Authoritative. |
 | `src/decompiled/` | Per-function decompilation. Partially wrong — see below. |
@@ -354,6 +355,48 @@ notarization removes that step and nothing else does.
   widgets, so `install_progressbar_fix()` swaps `ttk.Progressbar` for a
   Tk-drawn `MacProgressBar` instead and leaves Combobox alone. The game only
   uses `length`/`maximum`/`value`, checked across all 11 call sites.
+- **The font fix has to reach every Tk root, not just the pet's.** With no save
+  file the game builds the starter picker on its **own** `tk.Tk()`, created
+  before `PetApp` exists (pet.py:19067), so a fix installed from
+  `setup_pet_window` never touches it. That window is pinned at
+  `geometry('860x380')` while its contents ask for **930x262** at the default
+  font size -- 70px of overflow, which cuts the fifth starter's "이 아이로 시작"
+  button off the right edge. At size 8 the contents come to 790x260 and fit.
+  `install_font_defaults_everywhere()` therefore hooks `tk.Tk.__init__`;
+  `TkDefaultFont` is per-interpreter, so every root needs its own call.
+- **The starter picker can land on a Space the user is not looking at.** It
+  lives on its own `tk.Tk()` and the process that just launched is not yet the
+  active app, so the window is created correctly and still never shown.
+  Measured with a full-screen app in front: `860x412+34+64`, `alpha 1.0`, and
+  `CGWindowListCopyWindowInfo` returns no `kCGWindowIsOnscreen` -- a full-screen
+  app owns its own Space and the new window goes to the original one. The same
+  code in the foreground reports `visible=True`. To the user the app looks like
+  it did nothing. `install_starter_window_fix()` centres the window (the game
+  sets `geometry('860x380')` with no position, so Tk parks it at +5+35) and
+  calls `NSApp.activateIgnoringOtherApps_(True)`, then repeats the raise once
+  the window is mapped. After: `onscreen=True`, `+530+233`. Deliberately not
+  done for the pet window -- that one is `overrideredirect` and must not steal
+  focus on every launch, while the picker has to be answered.
+- **Log the notifications we actually send.** The shipped ad-hoc build always
+  falls back to `osascript`, and that path wrote nothing to `notify.log` --
+  only the `UNUserNotificationCenter` attempt did. Since the banner belongs to
+  Script Editor, the user cannot tell where a notification came from either, so
+  there was no way at all to answer "why did this alert appear". A new player
+  reported a wild-encounter banner while the starter picker was still up, and
+  it could not be traced. `post_with_osascript` now logs one line per
+  notification, with the date.
+- **A wild encounter can fire seconds after launch.** `_last_encounter_at`
+  starts at 0 (pet.py:4611), so the 25s `ENCOUNTER_COOLDOWN` is already
+  satisfied on the first tick and the 0.6%/s roll starts immediately -- every
+  launch, not just the first. That is the original game's behaviour, not
+  something the port introduced. What it *cannot* do is fire while the starter
+  picker is open: `main()` returns without ever building a `PetApp` if nothing
+  is picked, and `start_encounter` (pet.py:9354) needs `self.tray_icon`. The
+  single-instance `flock` was measured to work across processes, and the game
+  takes it before the picker, so two instances cannot explain it either. The
+  one path that reaches the picker after a `PetApp` has lived is
+  `PetApp.reset_pet` (pet.py:18916), which sets `restart_requested` and loops
+  `main()` back to the select phase.
 - **The pet stands still whenever a battle window is open, by design.**
   `_update_walk` (pet.py:9279) returns immediately on `self.battle_open`,
   while `Companion._step_free_roam` has no such check -- so companions keep
