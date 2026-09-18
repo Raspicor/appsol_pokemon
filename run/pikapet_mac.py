@@ -761,6 +761,9 @@ BAR_HEIGHT = 16          # 네이티브와 같은 높이. 바꾸면 레이아웃
 BAR_FILL = "#0073fb"     # 지금 화면에 나오던 그 파란색
 CORNER_GRIP = "\u21f2"   # ⇲
 
+# 업데이트 창 배경. 시스템 색을 쓰면 다크 모드에서 글자가 사라진다 (2-f 참고).
+UPGRADE_BG = "#f2f2f2"
+
 
 def _bar_fraction(value, maximum):
     """게이지가 찬 비율. 0.0 ~ 1.0.
@@ -1066,6 +1069,159 @@ def install_menu_bar(app):
         return None
 
 
+class UpgradeWindow(tk.Toplevel):
+    """내려받는 동안 보여주는 작은 창.
+
+    게임의 창들과 달리 제목 줄을 그대로 둔다 -- 사용자가 옮길 수 있어야 하고,
+    overrideredirect 를 걸면 aqua 에서 다시 되돌릴 수 없다 (2-b 참고).
+    """
+
+    def __init__(self, master, tag, on_cancel=None):
+        super().__init__(master)
+        self.on_cancel = on_cancel
+        self.title("PikaPet 업데이트")
+        self.resizable(False, False)
+        self.configure(bg=UPGRADE_BG)
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+        self._label = tk.Label(self, text=f"새 버전 {tag} 내려받는 중…",
+                               bg=UPGRADE_BG, anchor="w")
+        self._label.pack(fill="x", padx=16, pady=(16, 8))
+
+        self._bar = MacProgressBar(self, length=320, maximum=100, value=0)
+        self._bar.pack(padx=16)
+
+        self._note = tk.Label(self, text="", bg=UPGRADE_BG, anchor="w")
+        self._note.pack(fill="x", padx=16, pady=(6, 0))
+
+        self._button = tk.Button(self, text="취소", command=self._cancel)
+        self._button.pack(pady=(10, 14))
+
+        self.update_idletasks()
+        self._centre_on(master)
+        try:
+            self.transient(master)
+        except Exception:
+            pass
+
+    def _centre_on(self, master):
+        try:
+            w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+            sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+            self.geometry(f"+{(sw - w) // 2}+{(sh - h) // 3}")
+        except Exception:
+            pass
+
+    def _cancel(self):
+        self._button.configure(state="disabled")
+        self._note.configure(text="취소하고 있습니다…")
+        if self.on_cancel is not None:
+            self.on_cancel()
+
+    def set_progress(self, got, total):
+        """`got` 이 None 이면 '꺼내는 중' 단계다. Tk 메인 스레드 안이다."""
+        try:
+            if got is None:
+                self._bar.configure(value=100)
+                self._label.configure(text="새 버전을 설치할 준비를 하고 있습니다…")
+                self._note.configure(text="")
+                self._button.configure(state="disabled")
+                return
+            if total:
+                self._bar.configure(value=got * 100.0 / total)
+                self._note.configure(
+                    text=f"{got / 1048576:.0f} / {total / 1048576:.0f} MB")
+            else:
+                self._note.configure(text=f"{got / 1048576:.0f} MB")
+        except Exception:
+            pass
+
+
+def _finish_upgrade(app, window, tag, result):
+    """내려받기가 끝난 뒤. Tk 메인 스레드 안이다."""
+    from tkinter import messagebox
+
+    import macupgrade
+
+    try:
+        window.destroy()
+    except Exception:
+        pass
+
+    if result.cancelled:
+        return
+    if not result.ok:
+        macupgrade.log(f"실패 {tag}: {result.error}")
+        if messagebox.askyesno(
+                "PikaPet",
+                "업데이트를 받지 못했습니다.\n\n"
+                f"{result.error}\n\n"
+                "받는 곳을 열어서 직접 내려받을까요?"):
+            import macupdate
+            macupdate.open_releases_page()
+        return
+
+    started, reason = macupgrade.apply_and_relaunch(result.staged)
+    if not started:
+        macupgrade.log(f"교체 시작 실패 {tag}: {reason}")
+        messagebox.showwarning(
+            "PikaPet", f"업데이트를 적용할 수 없습니다.\n\n{reason}")
+        return
+
+    macupgrade.log(f"교체 스크립트 시작 {tag}, 앱을 종료합니다")
+    # 교체는 우리가 끝난 뒤에 일어난다. 스크립트가 pid 를 지켜보고 있다.
+    quit_app = getattr(app, "quit_app", None)
+    if callable(quit_app):
+        quit_app()
+    else:
+        try:
+            app.root.destroy()
+        except Exception:
+            pass
+        os._exit(0)
+
+
+def _start_upgrade(app, tag):
+    """내려받기를 시작하고 진행률 창을 띄운다."""
+    import macupgrade
+
+    root = app.root
+    window = UpgradeWindow(root, tag)
+    job = macupgrade.Upgrade(
+        root, tag,
+        on_progress=window.set_progress,
+        on_done=lambda result: _finish_upgrade(app, window, tag, result))
+    window.on_cancel = job.cancel
+    job.start()
+    return job
+
+
+def _offer_upgrade(app, current, tag):
+    """앱이 직접 설치하겠다고 제안한다. 이 자리에서 처리했으면 True.
+
+    False 를 돌려주면 위쪽이 기존 방식(받는 곳 열기)으로 넘어간다. 소스에서
+    실행 중이거나 dmg 안에서 실행 중이면 교체할 수 없기 때문이다.
+    """
+    from tkinter import messagebox
+
+    import macupgrade
+
+    ok, reason = macupgrade.can_replace()
+    if not ok:
+        return False
+    if not messagebox.askyesno(
+            "PikaPet",
+            # 조사를 쓰지 않는다 -- 버전 숫자를 읽는 방식에 따라 이/가가 갈린다.
+            "새 버전이 나왔습니다.\n\n"
+            f"지금 쓰는 것: {current}\n"
+            f"가장 최신: {tag}\n\n"
+            "지금 설치할까요? PikaPet이 잠시 닫히고 다시 열립니다.\n"
+            "키우던 포켓몬은 그대로 유지됩니다."):
+        return True                     # 나중에 하겠다고 했다
+    _start_upgrade(app, tag)
+    return True
+
+
 def _show_version_result(app, current, tag, newer):
     """수동 확인의 결과를 알린다. Tk 메인 스레드 안이므로 위젯을 써도 된다.
 
@@ -1084,20 +1240,22 @@ def _show_version_result(app, current, tag, newer):
         return
 
     if newer:
-        if messagebox.askyesno(
-                "PikaPet",
-                # 조사를 쓰지 않는다. '0.0.5 이/가', '0.0.1 이/가' 처럼
-                # 버전 숫자를 읽는 방식에 따라 갈려서 어느 쪽도 늘 맞지 않는다.
-                "새 버전이 나왔습니다.\n\n"
-                f"지금 쓰는 것: {current}\n"
-                f"가장 최신: {tag}\n\n"
-                "받는 곳을 열까요?"):
-            macupdate.open_releases_page()
-        # 나중에 다시 찾을 수 있게 메뉴에도 남겨둔다.
-        menu = getattr(app, "_pikapet_menu_bar", None)
-        if menu is not None:
-            menu.add_action(f"⬇ 새 버전 {tag} 받기",
-                            lambda: macupdate.open_releases_page())
+        # 앱이 직접 설치할 수 있으면 그쪽이 낫다 -- 브라우저로 받으면
+        # quarantine 이 붙어서 '그래도 열기'를 또 거쳐야 한다 (macupgrade 참고).
+        if not _offer_upgrade(app, current, tag):
+            if messagebox.askyesno(
+                    "PikaPet",
+                    # 조사를 쓰지 않는다. '0.0.5 이/가', '0.0.1 이/가' 처럼
+                    # 버전 숫자를 읽는 방식에 따라 갈려서 어느 쪽도 늘 맞지 않는다.
+                    "새 버전이 나왔습니다.\n\n"
+                    f"지금 쓰는 것: {current}\n"
+                    f"가장 최신: {tag}\n\n"
+                    "받는 곳을 열까요?"):
+                macupdate.open_releases_page()
+            menu = getattr(app, "_pikapet_menu_bar", None)
+            if menu is not None:
+                menu.add_action(f"⬇ 새 버전 {tag} 받기",
+                                lambda: macupdate.open_releases_page())
         return
 
     if current is None:
@@ -1183,12 +1341,20 @@ def install_update_check(app):
             print(f"  새 버전 {tag} (현재 {current})", flush=True)
             menu = getattr(app, "_pikapet_menu_bar", None)
             if menu is not None:
-                menu.add_action(f"⬇ 새 버전 {tag} 받기",
-                                lambda: macupdate.open_releases_page(url))
+                import macupgrade
+
+                # 직접 설치할 수 있으면 메뉴 항목도 '설치'가 된다. 브라우저를
+                # 거치지 않으면 quarantine 이 안 붙어서 보안 단계가 사라진다.
+                if macupgrade.can_replace()[0]:
+                    menu.add_action(f"⬇ 새 버전 {tag} 설치",
+                                    lambda: _offer_upgrade(app, current, tag))
+                else:
+                    menu.add_action(f"⬇ 새 버전 {tag} 받기",
+                                    lambda: macupdate.open_releases_page(url))
             icon = getattr(app, "tray_icon", None)
             if icon is not None:
                 icon.notify(f"새 버전이 나왔어요: {tag}. "
-                            f"메뉴 바 ◓ 에서 받을 수 있어요.", "PikaPet")
+                            f"메뉴 바 ◓ 에서 설치할 수 있어요.", "PikaPet")
 
         check = macupdate.UpdateCheck(root, current, on_update)
         check.start()
